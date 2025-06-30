@@ -35,7 +35,7 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
 2. Run installation script:
    ```bash
    chmod +x install.sh
-   ./install.sh
+   ./install.sh --break-system-packages
 
 3. Run the application:
    ```bash
