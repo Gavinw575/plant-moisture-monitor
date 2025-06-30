@@ -22,7 +22,7 @@ class PlantMoistureApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Plant Moisture Monitor")
-        self.root.geometry("600x500")
+        self.root.geometry("1200x1000")
         self.root.configure(bg='#2E8B57')  # Sea green background
 
         # Configuration file for storing thresholds
