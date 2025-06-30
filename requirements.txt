@@ -1,0 +1,4 @@
+adafruit-circuitpython-mcp3xxx>=1.4.0
+adafruit-circuitpython-busdevice
+adafruit-circuitpython-digitalio
+RPi.GPIO
