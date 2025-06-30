@@ -22,7 +22,7 @@ class PlantMoistureApp:
     def __init__(self, root, num_plants=40):
         self.root = root
         self.root.title("Multi-Plant Moisture Monitor")
-        self.root.geometry("1200x800")
+        self.root.geometry("800x480")  # Adjusted for screen size
         self.root.configure(bg='#2E8B57')  # Sea green background
         self.num_plants = num_plants
         self.channels_per_mcp = 8
@@ -51,7 +51,6 @@ class PlantMoistureApp:
         try:
             self.mcps = []
             self.channels = []
-            # Chip select pins for multiple MCP3008s (adjust as needed)
             cs_pins = [board.D5, board.D6, board.D13, board.D19, board.D26]
             spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
 
@@ -59,7 +58,6 @@ class PlantMoistureApp:
                 cs = digitalio.DigitalInOut(cs_pins[i])
                 mcp = MCP.MCP3008(spi, cs)
                 self.mcps.append(mcp)
-                # Create channels for this MCP
                 for j in range(min(self.channels_per_mcp, self.num_plants - i * self.channels_per_mcp)):
                     channel = AnalogIn(mcp, getattr(MCP, f'P{j}'))
                     self.channels.append(channel)
@@ -76,7 +74,7 @@ class PlantMoistureApp:
                 "wet_threshold": 2.5,
                 "update_interval": 2,
                 "name": f"Plant {i+1}",
-                "image_path": ""  # Placeholder for image path
+                "image_path": ""
             } for i in range(self.num_plants)
         }
 
@@ -105,13 +103,11 @@ class PlantMoistureApp:
 
     def setup_gui(self):
         """Create the main GUI interface with scrollable grid"""
-        # Main title
         title_frame = tk.Frame(self.root, bg='#2E8B57')
-        title_frame.pack(pady=10, fill='x')
+        title_frame.pack(pady=5, fill='x')
         tk.Label(title_frame, text="Multi-Plant Moisture Monitor",
-                 font=('Arial', 24, 'bold'), fg='white', bg='#2E8B57').pack()
+                 font=('Arial', 18, 'bold'), fg='white', bg='#2E8B57').pack()
 
-        # Scrollable canvas
         canvas = tk.Canvas(self.root, bg='#2E8B57')
         scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg='#2E8B57')
@@ -124,55 +120,52 @@ class PlantMoistureApp:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         scrollbar.pack(side="right", fill="y")
 
-        # Grid layout for plants
         self.plant_widgets = []
-        columns = 4  # Number of columns in grid
+        columns = 3  # Reduced to 3 columns
         for i in range(self.num_plants):
             row = i // columns
             col = i % columns
             plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=250, height=300)
-            plant_frame.grid(row=row, column=col, padx=10, pady=10, sticky='nsew')
+            plant_frame.grid(row=row, column=col, padx=5, pady=5, sticky='nsew')
             plant_frame.grid_propagate(False)
             self.setup_plant_tile(plant_frame, i)
-        
-        # Hardware status
-        # self.hardware_status = tk.Label(self.root,
-        #                               text="Hardware: Ready" if self.hardware_ready else "Hardware: Error",
-        #                               font=('Arial', 10),
-        #                               fg='green' if self.hardware_ready else 'red',
-        #                               bg='#2E8B57')
-        # self.hardware_status.pack(side='bottom', pady=5)
+
+        self.hardware_status = tk.Label(self.root,
+                                      text="Hardware: Ready" if self.hardware_ready else "Hardware: Error",
+                                      font=('Arial', 8),
+                                      fg='green' if self.hardware_ready else 'red',
+                                      bg='#2E8B57')
+        self.hardware_status.pack(side='bottom', pady=5)
 
     def setup_plant_tile(self, parent, plant_id):
         """Create GUI tile for a single plant"""
         plant_widgets = {}
-
-        # Plant name and status frame
         plant_widgets['frame'] = parent
+
+        # Name and alert frame
         name_frame = tk.Frame(parent, bg='white')
         name_frame.pack(pady=5, fill='x')
-
         plant_widgets['name_var'] = tk.StringVar(value=self.config[f'plant_{plant_id}']['name'])
-        name_label = tk.Label(name_frame, textvariable=plant_widgets['name_var'],
-                            font=('Arial', 12, 'bold'), bg='white')
-        name_label.pack(side='left', padx=5)
+        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], width=15)
+        name_entry.pack(side='left', padx=5)
+        name_entry.bind('<FocusOut>', lambda e, pid=plant_id: self.update_plant_name(pid))
 
         plant_widgets['alert_label'] = tk.Label(name_frame, text="!",
                                               font=('Arial', 12, 'bold'), fg='red', bg='white')
         plant_widgets['alert_label'].pack(side='right', padx=5)
-        plant_widgets['alert_label'].pack_forget()  # Hidden by default
+        plant_widgets['alert_label'].pack_forget()
 
         # Image placeholder
         plant_widgets['image_label'] = tk.Label(parent, text="[Plant Image]", bg='white',
-                                             font=('Arial', 10), width=20, height=5, relief='sunken')
+                                             font=('Arial', 8), width=20, height=5, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         # Moisture status
         plant_widgets['status_label'] = tk.Label(parent, text="CHECKING...",
-                                              font=('Arial', 14, 'bold'), bg='white', fg='orange')
+                                              font=('Arial', 12, 'bold'), bg='white', fg='orange')
         plant_widgets['status_label'].pack(pady=5)
 
         # Progress bar
@@ -181,14 +174,18 @@ class PlantMoistureApp:
 
         # Voltage
         plant_widgets['voltage_label'] = tk.Label(parent, text="Voltage: --",
-                                               font=('Arial', 10), bg='white')
+                                               font=('Arial', 8), bg='white')
         plant_widgets['voltage_label'].pack()
 
-        # Calibration button
-        calibrate_btn = tk.Button(parent, text="Calibrate",
-                                command=lambda: self.calibrate_sensor(plant_id),
-                                bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'))
-        calibrate_btn.pack(pady=5)
+        # Calibration and manual entry button
+        button_frame = tk.Frame(parent, bg='white')
+        button_frame.pack(pady=5)
+        tk.Button(button_frame, text="Calibrate",
+                 command=lambda: self.calibrate_sensor(plant_id),
+                 bg='#4CAF50', fg='white', font=('Arial', 8, 'bold')).pack(side='left', padx=3)
+        tk.Button(button_frame, text="Manual",
+                 command=lambda: self.manual_thresholds(plant_id),
+                 bg='#FFA500', fg='white', font=('Arial', 8, 'bold')).pack(side='left', padx=3)
 
         self.plant_widgets.append(plant_widgets)
 
@@ -203,43 +200,51 @@ class PlantMoistureApp:
         cal_window.title(f"Calibrate {self.config[f'plant_{plant_id}']['name']}")
         cal_window.geometry("400x300")
         cal_window.configure(bg='white')
-        cal_window.attributes('-topmost', True)  # Ensure window is on top
+        cal_window.attributes('-topmost', True)
 
         tk.Label(cal_window, text=f"Calibrating {self.config[f'plant_{plant_id}']['name']}",
-                font=('Arial', 16, 'bold'), bg='white').pack(pady=10)
+                font=('Arial', 14, 'bold'), bg='white').pack(pady=10)
 
         instructions = """
 1. Insert sensor in DRY soil and click 'Set Dry'
 2. Insert sensor in WET soil and click 'Set Wet'
-3. Click 'Apply' to save calibration
+3. Click 'Apply' to save
         """
 
         tk.Label(cal_window, text=instructions,
-                font=('Arial', 10), bg='white', justify='left').pack(pady=10)
+                font=('Arial', 10), bg='white', justify='left').pack(pady=5)
 
         current_reading = tk.Label(cal_window, text="Current: -- V",
-                                 font=('Arial', 12), bg='white')
-        current_reading.pack(pady=10)
+                                 font=('Arial', 10), bg='white')
+        current_reading.pack(pady=5)
 
+        # Threshold display
         plant_widgets = self.plant_widgets[plant_id]
+        plant_widgets['dry_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['dry_threshold'])
+        plant_widgets['wet_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['wet_threshold'])
+        tk.Label(cal_window, text="Dry Threshold:", bg='white').pack()
+        tk.Label(cal_window, textvariable=plant_widgets['dry_threshold_var'], bg='white').pack()
+        tk.Label(cal_window, text="Wet Threshold:", bg='white').pack()
+        tk.Label(cal_window, textvariable=plant_widgets['wet_threshold_var'], bg='white').pack()
+
         def update_reading():
             if self.hardware_ready and cal_window.winfo_exists():
                 voltage = self.channels[plant_id].voltage
                 current_reading.config(text=f"Current: {voltage:.2f} V")
-                cal_window.after(1000, update_reading)
+                cal_window.after(500, update_reading)
 
         def set_dry():
             if self.hardware_ready:
                 voltage = round(self.channels[plant_id].voltage, 2)
+                plant_widgets['dry_threshold_var'].set(voltage)
                 self.config[f'plant_{plant_id}']['dry_threshold'] = voltage
-                plant_widgets['name_var'].set(self.config[f'plant_{plant_id}']['name'])  # Refresh name
                 self.save_config()
 
         def set_wet():
             if self.hardware_ready:
                 voltage = round(self.channels[plant_id].voltage, 2)
+                plant_widgets['wet_threshold_var'].set(voltage)
                 self.config[f'plant_{plant_id}']['wet_threshold'] = voltage
-                plant_widgets['name_var'].set(self.config[f'plant_{plant_id}']['name'])  # Refresh name
                 self.save_config()
 
         def apply_calibration():
@@ -247,8 +252,7 @@ class PlantMoistureApp:
             cal_window.destroy()
 
         button_frame = tk.Frame(cal_window, bg='white')
-        button_frame.pack(pady=20)
-
+        button_frame.pack(pady=10)
         tk.Button(button_frame, text="Set Dry", command=set_dry,
                  bg='red', fg='white').pack(side='left', padx=5)
         tk.Button(button_frame, text="Set Wet", command=set_wet,
@@ -257,6 +261,37 @@ class PlantMoistureApp:
                  bg='green', fg='white').pack(side='left', padx=5)
 
         update_reading()
+
+    def manual_thresholds(self, plant_id):
+        """Open manual threshold entry dialog"""
+        manual_window = tk.Toplevel(self.root)
+        manual_window.title(f"Manual Thresholds {self.config[f'plant_{plant_id}']['name']}")
+        manual_window.geometry("300x200")
+        manual_window.configure(bg='white')
+        manual_window.attributes('-topmost', True)
+
+        tk.Label(manual_window, text=f"Set Thresholds for {self.config[f'plant_{plant_id}']['name']}",
+                font=('Arial', 12, 'bold'), bg='white').pack(pady=5)
+
+        plant_widgets = self.plant_widgets[plant_id]
+        plant_widgets['dry_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['dry_threshold'])
+        plant_widgets['wet_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['wet_threshold'])
+
+        tk.Label(manual_window, text="Dry Threshold (V):", bg='white').pack()
+        dry_entry = tk.Entry(manual_window, textvariable=plant_widgets['dry_threshold_var'])
+        dry_entry.pack(pady=5)
+        tk.Label(manual_window, text="Wet Threshold (V):", bg='white').pack()
+        wet_entry = tk.Entry(manual_window, textvariable=plant_widgets['wet_threshold_var'])
+        wet_entry.pack(pady=5)
+
+        def save_manual():
+            self.config[f'plant_{plant_id}']['dry_threshold'] = plant_widgets['dry_threshold_var'].get()
+            self.config[f'plant_{plant_id}']['wet_threshold'] = plant_widgets['wet_threshold_var'].get()
+            self.save_config()
+            manual_window.destroy()
+
+        tk.Button(manual_window, text="Save", command=save_manual,
+                 bg='green', fg='white').pack(pady=10)
 
     def get_moisture_status(self, voltage, plant_id):
         """Determine moisture status based on voltage reading for a specific plant"""
