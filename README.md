@@ -86,49 +86,57 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
 
 # For Future Updates (super easy):
 Whenever you want to update to the latest version:
-
+   ```bash
    cd ~/Documents/plant-moisture-monitor
    ./update.sh
-
+   ```
 ## Step 4: Making Updates
 To update the code:
 
 Edit files on GitHub.com directly in the web interface, OR
 Clone to your computer, make changes, and push:
-bashgit clone https://github.com/YOUR_USERNAME/plant-moisture-monitor.git
+   ```bash
+git clone https://github.com/YOUR_USERNAME/plant-moisture-monitor.git
 cd plant-moisture-monitor
 # make your changes
 git add .
 git commit -m "Description of changes"
 git push
-
+   ```
 
 Then on your Pi:
-bashcd ~/Documents/plant-moisture-monitor
-./update.sh
+   ```bash
+   cd ~/Documents/plant-moisture-monitor
+   ./update.sh
+   ```
 ## Step 5: Auto-start (Optional)
 To make the app start automatically when your Pi boots:
 
 Create a service file:
-bashsudo nano /etc/systemd/system/plant-monitor.service
-
+   ```bash
+   sudo nano /etc/systemd/system/plant-monitor.service
+   ```
 Add this content:
-ini[Unit]
-Description=Plant Moisture Monitor
-After=network.target
+   ```
+   ini[Unit]
+   Description=Plant Moisture Monitor
+   After=network.target
 
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/Documents/plant-moisture-monitor
-ExecStart=/usr/bin/python3 /home/pi/Documents/plant-moisture-monitor/plant_monitor.py
-Restart=always
-RestartSec=5
-Environment=DISPLAY=:0
+   [Service]
+   Type=simple
+   User=pi
+   WorkingDirectory=/home/pi/Documents/plant-moisture-monitor
+   ExecStart=/usr/bin/python3 /home/pi/Documents/plant-moisture-monitor/plant_monitor.py
+   Restart=always
+   RestartSec=5
+   Environment=DISPLAY=:0
 
-[Install]
-WantedBy=multi-user.target
-
+   [Install]
+   WantedBy=multi-user.target
+   ```
 Enable and start the service:
-bashsudo systemctl enable plant-monitor.service
-sudo systemctl start plant-monitor.service
+
+   ```bash
+   sudo systemctl enable plant-monitor.service
+   sudo systemctl start plant-monitor.service
+   ```
