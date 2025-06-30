@@ -29,7 +29,7 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
 ## Installation
 1. Clone this repository:
    ```bash
-   git clone https://github.com/Gavinw575/plant-moisture-monitor.git
+   git clone https://github.com/Gavinw575/plant-moisture-monitor
    cd plant-moisture-monitor
 
 2. Run installation script:
