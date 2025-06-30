@@ -139,12 +139,12 @@ class PlantMoistureApp:
             self.setup_plant_tile(plant_frame, i)
         
         # Hardware status
-        self.hardware_status = tk.Label(self.root,
-                                      text="Hardware: Ready" if self.hardware_ready else "Hardware: Error",
-                                      font=('Arial', 10),
-                                      fg='green' if self.hardware_ready else 'red',
-                                      bg='#2E8B57')
-        self.hardware_status.pack(side='bottom', pady=5)
+        # self.hardware_status = tk.Label(self.root,
+        #                               text="Hardware: Ready" if self.hardware_ready else "Hardware: Error",
+        #                               font=('Arial', 10),
+        #                               fg='green' if self.hardware_ready else 'red',
+        #                               bg='#2E8B57')
+        # self.hardware_status.pack(side='bottom', pady=5)
 
     def setup_plant_tile(self, parent, plant_id):
         """Create GUI tile for a single plant"""
