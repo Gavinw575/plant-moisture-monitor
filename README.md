@@ -31,3 +31,20 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
    ```bash
    git clone https://github.com/YOUR_USERNAME/plant-moisture-monitor.git
    cd plant-moisture-monitor
+
+2. Run installation script:
+   ```bash
+   chmod +x install.sh
+   ./install.sh
+
+3. Run the application:
+   ```bash
+   python3 plant_monitor.py
+
+
+## Updating
+To get to the latest version:
+   ```bash
+   ./update.sh
+   
+
