@@ -43,7 +43,7 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
 
 
 ## Updating
-To get to the latest version:
+1. To get to the latest version:
    ```bash
    ./update.sh
    
