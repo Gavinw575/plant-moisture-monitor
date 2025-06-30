@@ -71,7 +71,7 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
 3. Clone your repository:
    ```bash
    cd ~/Documents  # or wherever you want it
-   git clone https://github.com/YOUR_USERNAME/plant-moisture-monitor.git
+   git clone https://github.com/Gavinw575/plant-moisture-monitor
    cd plant-moisture-monitor
 
 4. Run the installation:
@@ -96,12 +96,14 @@ To update the code:
 Edit files on GitHub.com directly in the web interface, OR
 Clone to your computer, make changes, and push:
    ```bash
-git clone https://github.com/YOUR_USERNAME/plant-moisture-monitor.git
-cd plant-moisture-monitor
+   git clone https://github.com/Gavinw575/plant-moisture-monitor
+   cd plant-moisture-monitor
+```
 # make your changes
-git add .
-git commit -m "Description of changes"
-git push
+```
+   git add .
+   git commit -m "Description of changes"
+   git push
    ```
 
 Then on your Pi:
