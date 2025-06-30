@@ -88,7 +88,8 @@ A Raspberry Pi application that monitors soil moisture using an MCP3008 ADC and 
 Whenever you want to update to the latest version:
    ```bash
    cd ~/Documents/plant-moisture-monitor
-   ./update.sh
+   chmod +x ./update.sh
+   ./update.sh --break-system-packages
    ```
 ## Step 4: Making Updates
 To update the code:
