@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Plant Moisture Monitor GUI Application for Raspberry Pi
-Monitors soil moisture using MCP3008 ADC and moisture sensor
+Monitors multiple soil moisture sensors using MCP3008 ADC
 """
 
 import tkinter as tk
@@ -19,11 +19,12 @@ import os
 
 
 class PlantMoistureApp:
-    def __init__(self, root):
+    def __init__(self, root, num_plants=3):
         self.root = root
-        self.root.title("Blehhhhhh")
+        self.root.title("Multi-Plant Moisture Monitor")
         self.root.geometry("1200x1000")
         self.root.configure(bg='#2E8B57')  # Sea green background
+        self.num_plants = num_plants
 
         # Configuration file for storing thresholds
         self.config_file = "moisture_config.json"
@@ -44,7 +45,7 @@ class PlantMoistureApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_hardware(self):
-        """Initialize the MCP3008 ADC and moisture sensor"""
+        """Initialize the MCP3008 ADC and moisture sensors"""
         try:
             # Create the SPI bus
             spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
@@ -52,8 +53,8 @@ class PlantMoistureApp:
             cs = digitalio.DigitalInOut(board.D5)
             # Create the MCP object
             self.mcp = MCP.MCP3008(spi, cs)
-            # Create analog input channel on pin 0
-            self.chan = AnalogIn(self.mcp, MCP.P0)
+            # Create analog input channels for multiple plants
+            self.channels = [AnalogIn(self.mcp, getattr(MCP, f'P{i}')) for i in range(self.num_plants)]
             self.hardware_ready = True
         except Exception as e:
             self.hardware_ready = False
@@ -62,20 +63,29 @@ class PlantMoistureApp:
     def load_config(self):
         """Load configuration from file or use defaults"""
         default_config = {
-            "dry_threshold": 1.5,  # Voltage below this = dry
-            "wet_threshold": 2.5,  # Voltage above this = wet
-            "update_interval": 2  # Seconds between readings
+            f"plant_{i}": {
+                "dry_threshold": 1.5,
+                "wet_threshold": 2.5,
+                "update_interval": 2,
+                "name": f"Plant {i+1}"
+            } for i in range(self.num_plants)
         }
 
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
                     self.config = json.load(f)
+                # Ensure config has entries for all plants
+                for i in range(self.num_plants):
+                    plant_key = f"plant_{i}"
+                    if plant_key not in self.config:
+                        self.config[plant_key] = default_config[plant_key]
             else:
                 self.config = default_config
                 self.save_config()
         except:
             self.config = default_config
+            self.save_config()
 
     def save_config(self):
         """Save configuration to file"""
@@ -86,118 +96,134 @@ class PlantMoistureApp:
             print(f"Could not save config: {e}")
 
     def setup_gui(self):
-        """Create the main GUI interface"""
+        """Create the main GUI interface with tabs for each plant"""
         # Main title
         title_frame = tk.Frame(self.root, bg='#2E8B57')
         title_frame.pack(pady=20)
-
-        title_label = tk.Label(title_frame, text="Plant Moisture Monitor",
-                               font=('Arial', 24, 'bold'),
-                               fg='white', bg='#2E8B57')
+        title_label = tk.Label(title_frame, text="Multi-Plant Moisture Monitor",
+                             font=('Arial', 24, 'bold'), fg='white', bg='#2E8B57')
         title_label.pack()
 
-        # Status display frame
-        status_frame = tk.Frame(self.root, bg='white', relief='raised', bd=2)
-        status_frame.pack(pady=20, padx=20, fill='x')
+        # Create notebook for tabs
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(pady=10, padx=20, fill='both', expand=True)
 
-        # Current readings
-        self.voltage_label = tk.Label(status_frame, text="Voltage: --",
-                                      font=('Arial', 16), bg='white')
-        self.voltage_label.pack(pady=10)
+        self.plant_frames = []
+        self.plant_widgets = []
 
-        self.raw_label = tk.Label(status_frame, text="Raw ADC: --",
-                                  font=('Arial', 12), bg='white', fg='gray')
-        self.raw_label.pack()
-
-        # Moisture status with large indicator
-        self.status_label = tk.Label(status_frame, text="CHECKING...",
-                                     font=('Arial', 20, 'bold'),
-                                     bg='white', fg='orange')
-        self.status_label.pack(pady=15)
-
-        # Visual moisture indicator
-        self.create_moisture_indicator(status_frame)
-
-        # Last updated time
-        self.time_label = tk.Label(status_frame, text="Last updated: --",
-                                   font=('Arial', 10), bg='white', fg='gray')
-        self.time_label.pack(pady=5)
-
-        # Control panel
-        control_frame = tk.LabelFrame(self.root, text="Settings",
-                                      font=('Arial', 12, 'bold'),
-                                      bg='#90EE90', fg='#2E8B57')
-        control_frame.pack(pady=20, padx=20, fill='x')
-
-        # Threshold settings
-        tk.Label(control_frame, text="Dry Threshold (V):",
-                 bg='#90EE90').grid(row=0, column=0, sticky='w', padx=5, pady=5)
-
-        self.dry_threshold_var = tk.DoubleVar(value=self.config['dry_threshold'])
-        dry_spinbox = tk.Spinbox(control_frame, from_=0.0, to=3.3, increment=0.1,
-                                 textvariable=self.dry_threshold_var, width=10,
-                                 command=self.update_thresholds)
-        dry_spinbox.grid(row=0, column=1, padx=5, pady=5)
-
-        tk.Label(control_frame, text="Wet Threshold (V):",
-                 bg='#90EE90').grid(row=1, column=0, sticky='w', padx=5, pady=5)
-
-        self.wet_threshold_var = tk.DoubleVar(value=self.config['wet_threshold'])
-        wet_spinbox = tk.Spinbox(control_frame, from_=0.0, to=3.3, increment=0.1,
-                                 textvariable=self.wet_threshold_var, width=10,
-                                 command=self.update_thresholds)
-        wet_spinbox.grid(row=1, column=1, padx=5, pady=5)
-
-        # Calibration button
-        calibrate_btn = tk.Button(control_frame, text="Calibrate Sensor",
-                                  command=self.calibrate_sensor,
-                                  bg='#4CAF50', fg='white', font=('Arial', 10, 'bold'))
-        calibrate_btn.grid(row=2, column=0, columnspan=2, pady=10)
+        for i in range(self.num_plants):
+            plant_frame = tk.Frame(self.notebook, bg='white')
+            self.notebook.add(plant_frame, text=self.config[f'plant_{i}']['name'])
+            self.plant_frames.append(plant_frame)
+            self.setup_plant_gui(plant_frame, i)
 
         # Hardware status
         self.hardware_status = tk.Label(self.root,
-                                        text="Hardware: Ready" if self.hardware_ready else "Hardware: Error",
-                                        font=('Arial', 10),
-                                        fg='green' if self.hardware_ready else 'red',
-                                        bg='#2E8B57')
+                                      text="Hardware: Ready" if self.hardware_ready else "Hardware: Error",
+                                      font=('Arial', 10),
+                                      fg='green' if self.hardware_ready else 'red',
+                                      bg='#2E8B57')
         self.hardware_status.pack(side='bottom', pady=5)
 
-    def create_moisture_indicator(self, parent):
-        """Create a visual moisture level indicator"""
-        indicator_frame = tk.Frame(parent, bg='white')
-        indicator_frame.pack(pady=10)
+    def setup_plant_gui(self, parent, plant_id):
+        """Create GUI for a single plant"""
+        plant_widgets = {}
 
-        tk.Label(indicator_frame, text="Moisture Level:",
-                 font=('Arial', 12), bg='white').pack()
+        # Status display frame
+        status_frame = tk.Frame(parent, bg='white', relief='raised', bd=2)
+        status_frame.pack(pady=20, padx=20, fill='x')
 
-        # Progress bar style indicator
-        self.moisture_progress = ttk.Progressbar(indicator_frame, length=300, mode='determinate')
-        self.moisture_progress.pack(pady=5)
+        # Current readings
+        plant_widgets['voltage_label'] = tk.Label(status_frame, text="Voltage: --",
+                                               font=('Arial', 16), bg='white')
+        plant_widgets['voltage_label'].pack(pady=10)
 
-        # Scale labels
-        scale_frame = tk.Frame(indicator_frame, bg='white')
+        plant_widgets['raw_label'] = tk.Label(status_frame, text="Raw ADC: --",
+                                           font=('Arial', 12), bg='white', fg='gray')
+        plant_widgets['raw_label'].pack()
+
+        # Moisture status
+        plant_widgets['status_label'] = tk.Label(status_frame, text="CHECKING...",
+                                              font=('Arial', 20, 'bold'),
+                                              bg='white', fg='orange')
+        plant_widgets['status_label'].pack(pady=15)
+
+        # Visual moisture indicator
+        plant_widgets['moisture_progress'] = ttk.Progressbar(status_frame, length=300, mode='determinate')
+        plant_widgets['moisture_progress'].pack(pady=5)
+
+        scale_frame = tk.Frame(status_frame, bg='white')
         scale_frame.pack()
-
         tk.Label(scale_frame, text="Dry", font=('Arial', 8),
-                 fg='red', bg='white').pack(side='left')
+                fg='red', bg='white').pack(side='left')
         tk.Label(scale_frame, text="Perfect", font=('Arial', 8),
-                 fg='green', bg='white').pack(side='right')
+                fg='green', bg='white').pack(side='right')
 
-    def update_thresholds(self):
-        """Update threshold values from GUI"""
-        self.config['dry_threshold'] = self.dry_threshold_var.get()
-        self.config['wet_threshold'] = self.wet_threshold_var.get()
+        # Last updated time
+        plant_widgets['time_label'] = tk.Label(status_frame, text="Last updated: --",
+                                            font=('Arial', 10), bg='white', fg='gray')
+        plant_widgets['time_label'].pack(pady=5)
+
+        # Control panel
+        control_frame = tk.LabelFrame(parent, text="Settings",
+                                   font=('Arial', 12, 'bold'),
+                                   bg='#90EE90', fg='#2E8B57')
+        control_frame.pack(pady=20, padx=20, fill='x')
+
+        # Plant name
+        tk.Label(control_frame, text="Plant Name:",
+                bg='#90EE90').grid(row=0, column=0, sticky='w', padx=5, pady=5)
+        plant_widgets['name_var'] = tk.StringVar(value=self.config[f'plant_{plant_id}']['name'])
+        name_entry = tk.Entry(control_frame, textvariable=plant_widgets['name_var'])
+        name_entry.grid(row=0, column=1, padx=5, pady=5)
+        name_entry.bind('<FocusOut>', lambda e, pid=plant_id: self.update_plant_name(pid))
+
+        # Threshold settings
+        tk.Label(control_frame, text="Dry Threshold (V):",
+                bg='#90EE90').grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        plant_widgets['dry_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['dry_threshold'])
+        dry_spinbox = tk.Spinbox(control_frame, from_=0.0, to=3.3, increment=0.1,
+                               textvariable=plant_widgets['dry_threshold_var'], width=10,
+                               command=lambda: self.update_thresholds(plant_id))
+        dry_spinbox.grid(row=1, column=1, padx=5, pady=5)
+
+        tk.Label(control_frame, text="Wet Threshold (V):",
+                bg='#90EE90').grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        plant_widgets['wet_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['wet_threshold'])
+        wet_spinbox = tk.Spinbox(control_frame, from_=0.0, to=3.3, increment=0.1,
+                               textvariable=plant_widgets['wet_threshold_var'], width=10,
+                               command=lambda: self.update_thresholds(plant_id))
+        wet_spinbox.grid(row=2, column=1, padx=5, pady=5)
+
+        # Calibration button
+        calibrate_btn = tk.Button(control_frame, text="Calibrate Sensor",
+                                command=lambda: self.calibrate_sensor(plant_id),
+                                bg='#4CAF50', fg='white', font=('Arial', 10, 'bold'))
+        calibrate_btn.grid(row=3, column=0, columnspan=2, pady=10)
+
+        self.plant_widgets.append(plant_widgets)
+
+    def update_plant_name(self, plant_id):
+        """Update plant name in config and tab"""
+        self.config[f'plant_{plant_id}']['name'] = self.plant_widgets[plant_id]['name_var'].get()
+        self.notebook.tab(plant_id, text=self.config[f'plant_{plant_id}']['name'])
         self.save_config()
 
-    def calibrate_sensor(self):
-        """Open calibration dialog"""
+    def update_thresholds(self, plant_id):
+        """Update threshold values for a specific plant"""
+        self.config[f'plant_{plant_id}']['dry_threshold'] = self.plant_widgets[plant_id]['dry_threshold_var'].get()
+        self.config[f'plant_{plant_id}']['wet_threshold'] = self.plant_widgets[plant_id]['wet_threshold_var'].get()
+        self.save_config()
+
+    def calibrate_sensor(self, plant_id):
+        """Open calibration dialog for a specific plant"""
         cal_window = tk.Toplevel(self.root)
-        cal_window.title("Sensor Calibration")
+        cal_window.title(f"Calibrate {self.config[f'plant_{plant_id}']['name']}")
         cal_window.geometry("400x300")
         cal_window.configure(bg='white')
 
-        tk.Label(cal_window, text="Sensor Calibration",
-                 font=('Arial', 16, 'bold'), bg='white').pack(pady=10)
+        tk.Label(cal_window, text=f"Calibrating {self.config[f'plant_{plant_id}']['name']}",
+                font=('Arial', 16, 'bold'), bg='white').pack(pady=10)
 
         instructions = """
 1. Insert sensor in DRY soil and click 'Set Dry'
@@ -206,46 +232,46 @@ class PlantMoistureApp:
         """
 
         tk.Label(cal_window, text=instructions,
-                 font=('Arial', 10), bg='white', justify='left').pack(pady=10)
+                font=('Arial', 10), bg='white', justify='left').pack(pady=10)
 
         current_reading = tk.Label(cal_window, text="Current: -- V",
-                                   font=('Arial', 12), bg='white')
+                                 font=('Arial', 12), bg='white')
         current_reading.pack(pady=10)
 
         def update_reading():
-            if self.hardware_ready:
-                voltage = self.chan.voltage
+            if self.hardware_ready and cal_window.winfo_exists():
+                voltage = self.channels[plant_id].voltage
                 current_reading.config(text=f"Current: {voltage:.2f} V")
-            cal_window.after(1000, update_reading)
+                cal_window.after(1000, update_reading)
 
         def set_dry():
             if self.hardware_ready:
-                self.dry_threshold_var.set(round(self.chan.voltage, 2))
+                self.plant_widgets[plant_id]['dry_threshold_var'].set(round(self.channels[plant_id].voltage, 2))
 
         def set_wet():
             if self.hardware_ready:
-                self.wet_threshold_var.set(round(self.chan.voltage, 2))
+                self.plant_widgets[plant_id]['wet_threshold_var'].set(round(self.channels[plant_id].voltage, 2))
 
         def apply_calibration():
-            self.update_thresholds()
+            self.update_thresholds(plant_id)
             cal_window.destroy()
 
         button_frame = tk.Frame(cal_window, bg='white')
         button_frame.pack(pady=20)
 
         tk.Button(button_frame, text="Set Dry", command=set_dry,
-                  bg='red', fg='white').pack(side='left', padx=5)
+                 bg='red', fg='white').pack(side='left', padx=5)
         tk.Button(button_frame, text="Set Wet", command=set_wet,
-                  bg='blue', fg='white').pack(side='left', padx=5)
+                 bg='blue', fg='white').pack(side='left', padx=5)
         tk.Button(button_frame, text="Apply", command=apply_calibration,
-                  bg='green', fg='white').pack(side='left', padx=5)
+                 bg='green', fg='white').pack(side10=5, padx=5, pady=5)
 
         update_reading()
 
-    def get_moisture_status(self, voltage):
-        """Determine moisture status based on voltage reading"""
-        dry_threshold = self.config['dry_threshold']
-        wet_threshold = self.config['wet_threshold']
+    def get_moisture_status(self, voltage, plant_id):
+        """Determine moisture status based on voltage reading for a specific plant"""
+        dry_threshold = self.config[f'plant_{plant_id}']['dry_threshold']
+        wet_threshold = self.config[f'plant_{plant_id}']['wet_threshold']
 
         if voltage < dry_threshold:
             return "DRY - WATER NEEDED!", "red", 20
@@ -259,41 +285,44 @@ class PlantMoistureApp:
         while self.monitoring:
             try:
                 if self.hardware_ready:
-                    # Read sensor values
-                    raw_value = self.chan.value
-                    voltage = self.chan.voltage
+                    for i in range(self.num_plants):
+                        # Read sensor values
+                        raw_value = self.channels[i].value
+                        voltage = self.channels[i].voltage
 
-                    # Get moisture status
-                    status_text, status_color, progress_value = self.get_moisture_status(voltage)
+                        # Get moisture status
+                        status_text, status_color, progress_value = self.get_moisture_status(voltage, i)
 
-                    # Update GUI (must be done in main thread)
-                    self.root.after(0, self.update_gui, raw_value, voltage,
-                                    status_text, status_color, progress_value)
+                        # Update GUI (must be done in main thread)
+                        self.root.after(0, self.update_gui, i, raw_value, voltage,
+                                      status_text, status_color, progress_value)
                 else:
                     # Hardware not ready
                     self.root.after(0, self.update_gui_error)
 
-                time.sleep(self.config['update_interval'])
+                time.sleep(self.config['plant_0']['update_interval'])
 
             except Exception as e:
                 print(f"Monitoring error: {e}")
                 self.root.after(0, self.update_gui_error)
                 time.sleep(5)
 
-    def update_gui(self, raw_value, voltage, status_text, status_color, progress_value):
-        """Update GUI elements with new readings"""
-        self.voltage_label.config(text=f"Voltage: {voltage:.2f} V")
-        self.raw_label.config(text=f"Raw ADC: {raw_value}")
-        self.status_label.config(text=status_text, fg=status_color)
-        self.moisture_progress['value'] = progress_value
-        self.time_label.config(text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
+    def update_gui(self, plant_id, raw_value, voltage, status_text, status_color, progress_value):
+        """Update GUI elements with new readings for a specific plant"""
+        widgets = self.plant_widgets[plant_id]
+        widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V")
+        widgets['raw_label'].config(text=f"Raw ADC: {raw_value}")
+        widgets['status_label'].config(text=status_text, fg=status_color)
+        widgets['moisture_progress']['value'] = progress_value
+        widgets['time_label'].config(text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
 
     def update_gui_error(self):
         """Update GUI when there's a hardware error"""
-        self.voltage_label.config(text="Voltage: ERROR")
-        self.raw_label.config(text="Raw ADC: ERROR")
-        self.status_label.config(text="SENSOR ERROR", fg="red")
-        self.time_label.config(text="Check sensor connection")
+        for widgets in self.plant_widgets:
+            widgets['voltage_label'].config(text="Voltage: ERROR")
+            widgets['raw_label'].config(text="Raw ADC: ERROR")
+            widgets['status_label'].config(text="SENSOR ERROR", fg="red")
+            widgets['time_label'].config(text="Check sensor connection")
 
     def on_closing(self):
         """Handle application closing"""
@@ -305,7 +334,7 @@ class PlantMoistureApp:
 def main():
     """Main application entry point"""
     root = tk.Tk()
-    app = PlantMoistureApp(root)
+    app = PlantMoistureApp(root, num_plants=3)  # Configure number of plants here
     root.mainloop()
 
 
