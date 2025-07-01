@@ -165,7 +165,7 @@ class PlantMoistureApp:
         main_frame.pack_propagate(False)
         plant_widgets['main_frame'] = main_frame
 
-        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=170)
+        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=180)
         controls_frame.pack(fill='x', padx=5)
         controls_frame.pack_propagate(False)
         plant_widgets['controls_frame'] = controls_frame
@@ -195,17 +195,17 @@ class PlantMoistureApp:
         plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
         plant_widgets['moisture_progress'].pack(pady=5)
 
-        button_row_frame = tk.Frame(main_frame, bg='white', width=180, height=40)
-        button_row_frame.pack(fill='x', padx=5, pady=5)
+        button_row_frame = tk.Frame(main_frame, bg='white', width=180, height=30)
+        button_row_frame.pack(fill='x', padx=5, pady=10)
         button_row_frame.pack_propagate(False)
         plant_widgets['button_row_frame'] = button_row_frame
 
         tk.Button(button_row_frame, text="Thresholds", command=lambda: self.manual_thresholds(plant_id),
-                 bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(side='left', padx=2)
+                 bg='#4CAF50', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
         tk.Button(button_row_frame, text="Details", command=lambda: self.show_plant_details(plant_id),
-                 bg='#2196F3', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(side='left', padx=2)
+                 bg='#2196F3', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
         tk.Button(button_row_frame, text="Add Image", command=lambda: self.select_image(plant_id),
-                 bg='#FF9800', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(side='left', padx=2)
+                 bg='#FF9800', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
 
         self.plant_widgets.append(plant_widgets)
 
@@ -301,12 +301,31 @@ class PlantMoistureApp:
     def get_moisture_status(self, voltage, plant_id):
         dry_threshold = self.config[f'plant_{plant_id}']['dry_threshold']
         wet_threshold = self.config[f'plant_{plant_id}']['wet_threshold']
+        max_voltage = 3.3
+
+        # Calculate progress bar value (0-100) based on voltage
         if voltage < dry_threshold:
-            return "DRY - WATER NEEDED!", "#FF9999", 20, True
+            status_text = "DRY - WATER NEEDED!"
+            status_color = "#FF9999"
+            # Map 0 to dry_threshold -> 0 to 20
+            progress_value = (voltage / dry_threshold) * 20 if dry_threshold > 0 else 0
+            show_alert = True
         elif voltage > wet_threshold:
-            return "TOO WET", "#99CCFF", 100, False
+            status_text = "TOO WET"
+            status_color = "#99CCFF"
+            # Map wet_threshold to 3.3V -> 80 to 100
+            progress_value = 80 + ((voltage - wet_threshold) / (max_voltage - wet_threshold)) * 20 if max_voltage > wet_threshold else 100
+            show_alert = False
         else:
-            return "PERFECT", "#99FF99", 60, False
+            status_text = "PERFECT"
+            status_color = "#99FF99"
+            # Map dry_threshold to wet_threshold -> 20 to 80
+            progress_value = 20 + ((voltage - dry_threshold) / (wet_threshold - dry_threshold)) * 60 if wet_threshold > dry_threshold else 20
+            show_alert = False
+
+        # Clamp progress value to 0-100
+        progress_value = max(0, min(100, progress_value))
+        return status_text, status_color, progress_value, show_alert
 
     def monitor_moisture(self):
         while self.monitoring:
