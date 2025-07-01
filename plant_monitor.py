@@ -157,16 +157,15 @@ class PlantMoistureApp:
         name_entry.bind('<FocusIn>', lambda e: name_entry.select_range(0, tk.END))
         name_entry.bind('<FocusOut>', lambda e, pid=plant_id: self.update_plant_name(pid))
 
-        plant_widgets['alert_label'] = tk.Label(name_frame, text="!", font=('Arial', 12, 'bold'), fg='red', bg='white', width=2)
+        plant_widgets['alert_label'] = tk.Label(name_frame, text="", font=('Arial', 12, 'bold'), fg='red', bg='white', width=2)
         plant_widgets['alert_label'].pack(side='right', padx=5)
-        plant_widgets['alert_label'].pack_forget()
 
-        main_frame = tk.Frame(parent, bg='white', width=180, height=200)
+        main_frame = tk.Frame(parent, bg='white', width=180, height=250)
         main_frame.pack(fill='both', expand=True, padx=5)
         main_frame.pack_propagate(False)
         plant_widgets['main_frame'] = main_frame
 
-        controls_frame = tk.Frame(main_frame, bg='white', width=180, height=160)
+        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=170)
         controls_frame.pack(fill='x', padx=5)
         controls_frame.pack_propagate(False)
         plant_widgets['controls_frame'] = controls_frame
@@ -185,28 +184,28 @@ class PlantMoistureApp:
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
                                                   font=('Arial', 8), width=12, height=5, relief='sunken')
-        plant_widgets['image_label'].pack(pady=2)
+        plant_widgets['image_label'].pack(pady=5)
 
-        plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=16, height=1)
-        plant_widgets['status_label'].pack(pady=2)
+        plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=1)
+        plant_widgets['status_label'].pack(pady=5)
 
-        plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white', width=16, height=1)
-        plant_widgets['voltage_label'].pack(pady=2)
+        plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white', width=14, height=1)
+        plant_widgets['voltage_label'].pack(pady=5)
 
         plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
-        plant_widgets['moisture_progress'].pack(pady=2)
+        plant_widgets['moisture_progress'].pack(pady=5)
 
         button_row_frame = tk.Frame(main_frame, bg='white', width=180, height=40)
-        button_row_frame.pack(fill='x', padx=5, pady=2)
+        button_row_frame.pack(fill='x', padx=5, pady=5)
         button_row_frame.pack_propagate(False)
         plant_widgets['button_row_frame'] = button_row_frame
 
         tk.Button(button_row_frame, text="Thresholds", command=lambda: self.manual_thresholds(plant_id),
-                 bg='#4CAF50', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
+                 bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(side='left', padx=2)
         tk.Button(button_row_frame, text="Details", command=lambda: self.show_plant_details(plant_id),
-                 bg='#2196F3', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
+                 bg='#2196F3', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(side='left', padx=2)
         tk.Button(button_row_frame, text="Add Image", command=lambda: self.select_image(plant_id),
-                 bg='#FF9800', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
+                 bg='#FF9800', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(side='left', padx=2)
 
         self.plant_widgets.append(plant_widgets)
 
@@ -367,10 +366,7 @@ class PlantMoistureApp:
             widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V", bg=status_color)
             widgets['status_label'].config(text=status_text, fg='black', bg=status_color)
             widgets['moisture_progress']['value'] = progress_value
-            if show_alert:
-                widgets['alert_label'].pack(side='right', padx=5)
-            else:
-                widgets['alert_label'].pack_forget()
+            widgets['alert_label'].config(text="!" if show_alert else "")
         except Exception as e:
             logging.error(f"GUI update failed for plant_{plant_id}: {e}")
 
@@ -391,7 +387,7 @@ class PlantMoistureApp:
                 widgets['voltage_label'].config(text="Voltage: ERROR", bg='white')
                 widgets['status_label'].config(text="SENSOR ERROR", fg="red", bg='white')
                 widgets['moisture_progress']['value'] = 0
-                widgets['alert_label'].pack_forget()
+                widgets['alert_label'].config(text="")
         except Exception as e:
             logging.error(f"GUI error update failed: {e}")
 
