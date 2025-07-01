@@ -20,7 +20,7 @@ import os
 import logging
 
 # Setup logging
-logging.basicConfig(filename='/home/chicken/plant-moisture-monitor.log', level=logging.DEBUG)
+logging.basicConfig(filename='/home/chicken/plant_monitor.log', level=logging.DEBUG)
 
 class PlantMoistureApp:
     def __init__(self, root, num_plants=40):
@@ -210,7 +210,7 @@ class PlantMoistureApp:
                 tk.Label(manual_window, text="Enter valid numbers", fg='red', bg='white').pack()
                 logging.error(f"Threshold save failed for plant_{plant_id}: {e}")
 
-        tk.Button(manual_window, text="Save斗殞
+        tk.Button(manual_window, text="Save", command=save_manual,
                  bg='green', fg='white', font=('Arial', 14, 'bold'), width=10, height=2).pack(pady=15)
 
     def get_moisture_status(self, voltage, plant_id):
