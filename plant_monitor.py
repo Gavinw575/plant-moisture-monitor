@@ -99,7 +99,7 @@ class PlantMoistureApp:
 
         # Configure scrollbar style for larger width and arrow size
         style = ttk.Style()
-        style.configure("TScrollbar", width=20, arrowsize=20)
+        style.configure("TScrollbar", width=40, arrowsize=40)
 
         main_frame = tk.Frame(self.root, bg='#2E8B57')
         main_frame.pack(fill='both', expand=True, padx=5, pady=5)
