@@ -97,18 +97,21 @@ class PlantMoistureApp:
         title_frame.pack(pady=5, fill='x')
         tk.Label(title_frame, text="Plant Moisture Monitor", font=('Arial', 20, 'bold'), fg='white', bg='#2E8B57').pack()
 
-        # Configure scrollbar style for larger width
+        # Configure scrollbar style for larger width and arrow size
         style = ttk.Style()
-        style.configure("TScrollbar", width=30)
+        style.configure("TScrollbar", width=20, arrowsize=20)
 
-        canvas = tk.Canvas(self.root, bg='#2E8B57')
-        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview, style="TScrollbar")
+        main_frame = tk.Frame(self.root, bg='#2E8B57')
+        main_frame.pack(fill='both', expand=True, padx=5, pady=5)
+
+        canvas = tk.Canvas(main_frame, bg='#2E8B57', width=600)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg='#2E8B57')
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
-        scrollbar.pack(side="right", fill="y")
+        scrollbar.pack(side="left", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
 
         # Enable finger scrolling
         def scroll_canvas(event):
@@ -124,12 +127,19 @@ class PlantMoistureApp:
         canvas.bind_all("<Button-5>", scroll_canvas)
         canvas.bind("<B1-Motion>", lambda e: canvas.yview_scroll(int(-e.delta_y / 30), "units"))
 
+        # Dry Plants panel
+        dry_frame = tk.Frame(main_frame, bg='#2E8B57', width=180)
+        dry_frame.pack(side="right", fill="y", padx=5)
+        tk.Label(dry_frame, text="Dry Plants", font=('Arial', 14, 'bold'), fg='white', bg='#2E8B57').pack(pady=5)
+        self.dry_listbox = tk.Listbox(dry_frame, font=('Arial', 12), width=15, height=15, bg='white')
+        self.dry_listbox.pack(fill="y", expand=True)
+
         self.plant_widgets = []
         columns = 3
         for i in range(self.num_plants):
             row = i // columns
             col = i % columns
-            plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=260, height=300)
+            plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=190, height=300)
             plant_frame.grid(row=row, column=col, padx=5, pady=5, sticky='nsew')
             plant_frame.grid_propagate(False)
             self.setup_plant_tile(plant_frame, i)
@@ -141,12 +151,12 @@ class PlantMoistureApp:
         name_frame = tk.Frame(parent, bg='white')
         name_frame.pack(pady=5, fill='x', padx=5)
         plant_widgets['name_var'] = tk.StringVar(value=self.config[f'plant_{plant_id}']['name'])
-        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 14), width=15)
+        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 12), width=12)
         name_entry.pack(side='left', padx=5)
         name_entry.bind('<FocusIn>', lambda e: name_entry.select_range(0, tk.END))
         name_entry.bind('<FocusOut>', lambda e, pid=plant_id: self.update_plant_name(pid))
 
-        plant_widgets['alert_label'] = tk.Label(name_frame, text="!", font=('Arial', 14, 'bold'), fg='red', bg='white')
+        plant_widgets['alert_label'] = tk.Label(name_frame, text="!", font=('Arial', 12, 'bold'), fg='red', bg='white')
         plant_widgets['alert_label'].pack(side='right', padx=5)
         plant_widgets['alert_label'].pack_forget()
 
@@ -157,22 +167,22 @@ class PlantMoistureApp:
         controls_frame.pack(fill='x', padx=5)
 
         plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                              font=('Arial', 10), width=15, height=5, relief='sunken')
+                                              font=('Arial', 8), width=15, height=5, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
-        plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 12, 'bold'), bg='white', fg='orange')
+        plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange')
         plant_widgets['status_label'].pack(pady=5)
 
-        plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 10), bg='white')
+        plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white')
         plant_widgets['voltage_label'].pack()
 
-        plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=150, mode='determinate')
+        plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
         plant_widgets['moisture_progress'].pack(pady=5)
 
         button_frame = tk.Frame(main_frame, bg='white')
         button_frame.pack(side='right', padx=5, pady=5)
         tk.Button(button_frame, text="Set Thresholds", command=lambda: self.manual_thresholds(plant_id),
-                 bg='#4CAF50', fg='white', font=('Arial', 10, 'bold'), width=12, height=2).pack()
+                 bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack()
 
         self.plant_widgets.append(plant_widgets)
 
@@ -240,6 +250,7 @@ class PlantMoistureApp:
         while self.monitoring:
             try:
                 if self.hardware_ready:
+                    self.dry_listbox.delete(0, tk.END)  # Clear dry plants list
                     for i in range(self.num_plants):
                         if i < len(self.channels):
                             raw_value = self.channels[i].value
@@ -247,6 +258,8 @@ class PlantMoistureApp:
                             status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
                             self.root.after(0, self.update_gui, i, raw_value, voltage,
                                           status_text, status_color, progress_value, show_alert)
+                            if show_alert:  # Add to dry plants list
+                                self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
                 else:
                     self.root.after(0, self.update_gui_error)
                 time.sleep(self.config['plant_0']['update_interval'])
@@ -270,6 +283,7 @@ class PlantMoistureApp:
 
     def update_gui_error(self):
         try:
+            self.dry_listbox.delete(0, tk.END)
             for widgets in self.plant_widgets:
                 widgets['voltage_label'].config(text="Voltage: ERROR")
                 widgets['status_label'].config(text="SENSOR ERROR", fg="red")
