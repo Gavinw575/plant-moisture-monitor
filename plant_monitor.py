@@ -72,23 +72,28 @@ class PlantMoistureApp:
             } for i in range(self.num_plants)
         }
         try:
+            logging.debug(f"Loading config from {self.config_file}")
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
                     self.config = json.load(f)
+                logging.debug(f"Config loaded: {list(self.config.keys())}")
                 for i in range(self.num_plants):
                     plant_key = f"plant_{i}"
                     if plant_key not in self.config:
+                        logging.info(f"Missing config for {plant_key}, using default")
                         self.config[plant_key] = default_config[plant_key]
                 if "last_dry_check" not in self.config:
+                    logging.info("Missing last_dry_check, using default")
                     self.config["last_dry_check"] = default_config["last_dry_check"]
             else:
+                logging.info("Config file not found, using default")
                 self.config = default_config
                 self.save_config()
             logging.info("Config loaded successfully")
         except Exception as e:
+            logging.error(f"Config load failed, using default: {e}")
             self.config = default_config
             self.save_config()
-            logging.error(f"Config load failed, using default: {e}")
 
     def save_config(self):
         try:
@@ -112,7 +117,7 @@ class PlantMoistureApp:
         canvas = tk.Canvas(main_frame, bg='#2E8B57', width=600)
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg='#2E8B57')
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=(0, 0, 600, 300 * (self.num_plants // 3 + 1))))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="left", fill="y")
@@ -133,6 +138,7 @@ class PlantMoistureApp:
 
         dry_frame = tk.Frame(main_frame, bg='#2E8B57', width=180)
         dry_frame.pack(side="right", fill="y", padx=5)
+        dry_frame.pack_propagate(False)
         tk.Label(dry_frame, text="Dry Plants", font=('Arial', 14, 'bold'), fg='white', bg='#2E8B57').pack(pady=5)
         self.dry_listbox = tk.Listbox(dry_frame, font=('Arial', 12), width=15, height=15, bg='white')
         self.dry_listbox.pack(fill="y", expand=True)
@@ -177,17 +183,17 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                # To change image size, modify (80, 80) to desired size, e.g., (100, 100) or (60, 60)
-                img = Image.open(image_path).resize((80, 80))
+                # To change image size, modify (60, 60) to desired size, e.g., (80, 80) or (50, 50)
+                img = Image.open(image_path).resize((60, 60))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
                 plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 8), width=12, height=4, relief='sunken')
+                                                      font=('Arial', 8), width=12, height=3, relief='sunken')
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 8), width=12, height=4, relief='sunken')
+                                                  font=('Arial', 8), width=12, height=3, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=1)
@@ -219,8 +225,8 @@ class PlantMoistureApp:
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
-                # To change image size, modify (80, 80) to desired size, e.g., (100, 100) or (60, 60)
-                img = Image.open(path).resize((80, 80))
+                # To change image size, modify (60, 60) to desired size, e.g., (80, 80) or (50, 50)
+                img = Image.open(path).resize((60, 60))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
@@ -332,6 +338,8 @@ class PlantMoistureApp:
         return status_text, status_color, progress_value, show_alert
 
     def monitor_moisture(self):
+        # Track dry plants to avoid unnecessary listbox updates
+        current_dry_plants = set()
         while self.monitoring:
             try:
                 # Check if it's time for daily update for plants 2-40
@@ -350,7 +358,7 @@ class PlantMoistureApp:
                         do_daily_check = True
 
                 if do_daily_check:
-                    self.dry_listbox.delete(0, tk.END)
+                    current_dry_plants.clear()
                     self.config["last_dry_check"] = current_time.isoformat()
                     self.save_config()
                     logging.info(f"Daily dryness check at {current_time}")
@@ -372,8 +380,14 @@ class PlantMoistureApp:
                 status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, 0)
                 self.root.after(0, self.update_gui, 0, raw_value, voltage,
                                status_text, status_color, progress_value, show_alert)
-                if show_alert and do_daily_check:
-                    self.dry_listbox.insert(tk.END, self.config['plant_0']['name'])
+                plant_name = self.config['plant_0']['name']
+                if show_alert:
+                    if plant_name not in current_dry_plants:
+                        self.dry_listbox.insert(tk.END, plant_name)
+                        current_dry_plants.add(plant_name)
+                elif plant_name in current_dry_plants:
+                    self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
+                    current_dry_plants.remove(plant_name)
 
                 # Update plants 2-40 (indices 1-39) only for daily check
                 if do_daily_check:
@@ -393,8 +407,14 @@ class PlantMoistureApp:
                         status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
                         self.root.after(0, self.update_gui, i, raw_value, voltage,
                                        status_text, status_color, progress_value, show_alert)
+                        plant_name = self.config[f'plant_{i}']['name']
                         if show_alert:
-                            self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
+                            if plant_name not in current_dry_plants:
+                                self.dry_listbox.insert(tk.END, plant_name)
+                                current_dry_plants.add(plant_name)
+                        elif plant_name in current_dry_plants:
+                            self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
+                            current_dry_plants.remove(plant_name)
 
                 time.sleep(self.config['plant_0']['update_interval'])
             except Exception as e:
