@@ -97,9 +97,9 @@ class PlantMoistureApp:
         title_frame.pack(pady=5, fill='x')
         tk.Label(title_frame, text="Plant Moisture Monitor", font=('Arial', 20, 'bold'), fg='white', bg='#2E8B57').pack()
 
-        # Configure scrollbar style for larger width and arrow size
+        # Configure scrollbar style
         style = ttk.Style()
-        style.configure("TScrollbar", width=40, arrowsize=40)
+        style.configure("TScrollbar", width=20, arrowsize=20)
 
         main_frame = tk.Frame(self.root, bg='#2E8B57')
         main_frame.pack(fill='both', expand=True, padx=5, pady=5)
@@ -184,7 +184,25 @@ class PlantMoistureApp:
         tk.Button(button_frame, text="Set Thresholds", command=lambda: self.manual_thresholds(plant_id),
                  bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack()
 
+        # Tap-to-zoom binding
+        parent.bind("<Button-1>", lambda e: self.show_plant_details(plant_id))
+
         self.plant_widgets.append(plant_widgets)
+
+    def show_plant_details(self, plant_id):
+        details_window = tk.Toplevel(self.root)
+        details_window.title(self.config[f'plant_{plant_id}']['name'])
+        details_window.geometry("400x400")
+        details_window.configure(bg='white')
+        details_window.grab_set()
+
+        tk.Label(details_window, text=self.config[f'plant_{plant_id}']['name'], font=('Arial', 16, 'bold'), bg='white').pack(pady=10)
+        tk.Label(details_window, text=f"Status: {self.plant_widgets[plant_id]['status_label']['text']}", font=('Arial', 12), bg='white').pack()
+        tk.Label(details_window, text=f"Voltage: {self.plant_widgets[plant_id]['voltage_label']['text']}", font=('Arial', 12), bg='white').pack()
+        tk.Label(details_window, text=f"Dry Threshold: {self.config[f'plant_{plant_id}']['dry_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
+        tk.Label(details_window, text=f"Wet Threshold: {self.config[f'plant_{plant_id}']['wet_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
+        tk.Button(details_window, text="Edit Thresholds", command=lambda: self.manual_thresholds(plant_id),
+                 bg='#4CAF50', fg='white', font=('Arial', 12, 'bold'), width=12, height=2).pack(pady=10)
 
     def update_plant_name(self, plant_id):
         name = self.plant_widgets[plant_id]['name_var'].get().strip()
@@ -240,11 +258,11 @@ class PlantMoistureApp:
         dry_threshold = self.config[f'plant_{plant_id}']['dry_threshold']
         wet_threshold = self.config[f'plant_{plant_id}']['wet_threshold']
         if voltage < dry_threshold:
-            return "DRY - WATER NEEDED!", "red", 20, True
+            return "DRY - WATER NEEDED!", "#FF9999", 20, True  # Light red
         elif voltage > wet_threshold:
-            return "TOO WET", "blue", 100, False
+            return "TOO WET", "#99CCFF", 100, False  # Light blue
         else:
-            return "PERFECT", "green", 60, False
+            return "PERFECT", "#99FF99", 60, False  # Light green
 
     def monitor_moisture(self):
         while self.monitoring:
@@ -258,7 +276,7 @@ class PlantMoistureApp:
                             status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
                             self.root.after(0, self.update_gui, i, raw_value, voltage,
                                           status_text, status_color, progress_value, show_alert)
-                            if show_alert:  # Add to dry plants list
+                            if show_alert:
                                 self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
                 else:
                     self.root.after(0, self.update_gui_error)
@@ -271,8 +289,17 @@ class PlantMoistureApp:
     def update_gui(self, plant_id, raw_value, voltage, status_text, status_color, progress_value, show_alert):
         try:
             widgets = self.plant_widgets[plant_id]
-            widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V")
-            widgets['status_label'].config(text=status_text, fg=status_color)
+            widgets['frame'].config(bg=status_color)
+            widgets['name_frame'] = widgets['frame'].winfo_children()[0]
+            widgets['name_frame'].config(bg=status_color)
+            widgets['main_frame'] = widgets['frame'].winfo_children()[1]
+            widgets['main_frame'].config(bg=status_color)
+            widgets['controls_frame'] = widgets['main_frame'].winfo_children()[0]
+            widgets['controls_frame'].config(bg=status_color)
+            widgets['button_frame'] = widgets['main_frame'].winfo_children()[1]
+            widgets['button_frame'].config(bg=status_color)
+            widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V",bg=status_color)
+            widgets['status_label'].config(text=status_text, fg='black', bg=status_color)
             widgets['moisture_progress']['value'] = progress_value
             if show_alert:
                 widgets['alert_label'].pack(side='right', padx=5)
@@ -285,8 +312,17 @@ class PlantMoistureApp:
         try:
             self.dry_listbox.delete(0, tk.END)
             for widgets in self.plant_widgets:
-                widgets['voltage_label'].config(text="Voltage: ERROR")
-                widgets['status_label'].config(text="SENSOR ERROR", fg="red")
+                widgets['frame'].config(bg='white')
+                widgets['name_frame'] = widgets['frame'].winfo_children()[0]
+                widgets['name_frame'].config(bg='white')
+                widgets['main_frame'] = widgets['frame'].winfo_children()[1]
+                widgets['main_frame'].config(bg='white')
+                widgets['controls_frame'] = widgets['main_frame'].winfo_children()[0]
+                widgets['controls_frame'].config(bg='white')
+                widgets['button_frame'] = widgets['main_frame'].winfo_children()[1]
+                widgets['button_frame'].config(bg='white')
+                widgets['voltage_label'].config(text="Voltage: ERROR", bg='white')
+                widgets['status_label'].config(text="SENSOR ERROR", fg="red", bg='white')
                 widgets['moisture_progress']['value'] = 0
                 widgets['alert_label'].pack_forget()
         except Exception as e:
