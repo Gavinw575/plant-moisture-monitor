@@ -12,6 +12,7 @@ import json
 import os
 import logging
 import random  # For simulated voltages
+from datetime import datetime, timedelta
 
 # Setup logging
 logging.basicConfig(filename='/home/chicken/plant_monitor.log', level=logging.DEBUG)
@@ -61,6 +62,7 @@ class PlantMoistureApp:
 
     def load_config(self):
         default_config = {
+            "last_dry_check": "",
             f"plant_{i}": {
                 "dry_threshold": 1.5,
                 "wet_threshold": 2.5,
@@ -77,6 +79,8 @@ class PlantMoistureApp:
                     plant_key = f"plant_{i}"
                     if plant_key not in self.config:
                         self.config[plant_key] = default_config[plant_key]
+                if "last_dry_check" not in self.config:
+                    self.config["last_dry_check"] = default_config["last_dry_check"]
             else:
                 self.config = default_config
                 self.save_config()
@@ -165,7 +169,7 @@ class PlantMoistureApp:
         main_frame.pack_propagate(False)
         plant_widgets['main_frame'] = main_frame
 
-        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=180)
+        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=190)
         controls_frame.pack(fill='x', padx=5)
         controls_frame.pack_propagate(False)
         plant_widgets['controls_frame'] = controls_frame
@@ -173,17 +177,17 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                # To change image size, modify (100, 100) to desired size, e.g., (80, 80) or (120, 120)
-                img = Image.open(image_path).resize((100, 100))
+                # To change image size, modify (80, 80) to desired size, e.g., (100, 100) or (60, 60)
+                img = Image.open(image_path).resize((80, 80))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
                 plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 8), width=12, height=5, relief='sunken')
+                                                      font=('Arial', 8), width=12, height=4, relief='sunken')
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 8), width=12, height=5, relief='sunken')
+                                                  font=('Arial', 8), width=12, height=4, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=1)
@@ -215,8 +219,8 @@ class PlantMoistureApp:
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
-                # To change image size, modify (100, 100) to desired size, e.g., (80, 80) or (120, 120)
-                img = Image.open(path).resize((100, 100))
+                # To change image size, modify (80, 80) to desired size, e.g., (100, 100) or (60, 60)
+                img = Image.open(path).resize((80, 80))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
@@ -330,9 +334,50 @@ class PlantMoistureApp:
     def monitor_moisture(self):
         while self.monitoring:
             try:
-                if self.hardware_ready:
+                # Check if it's time for daily update for plants 2-40
+                current_time = datetime.now()
+                last_dry_check = self.config.get("last_dry_check", "")
+                do_daily_check = False
+                if not last_dry_check:
+                    do_daily_check = True
+                else:
+                    try:
+                        last_check_time = datetime.fromisoformat(last_dry_check)
+                        if current_time.date() > last_check_time.date():
+                            do_daily_check = True
+                    except ValueError:
+                        logging.error(f"Invalid last_dry_check format: {last_dry_check}")
+                        do_daily_check = True
+
+                if do_daily_check:
                     self.dry_listbox.delete(0, tk.END)
-                    for i in range(self.num_plants):
+                    self.config["last_dry_check"] = current_time.isoformat()
+                    self.save_config()
+                    logging.info(f"Daily dryness check at {current_time}")
+
+                # Always update plant 1 (index 0)
+                if self.hardware_ready:
+                    try:
+                        raw_value = self.channels[0].value
+                        voltage = self.channels[0].voltage
+                        logging.debug(f"Plant_0: raw={raw_value}, voltage={voltage:.2f}V")
+                    except Exception as e:
+                        logging.error(f"Failed to read sensor for plant_0: {e}")
+                        raw_value = 0
+                        voltage = random.uniform(0.0, 3.3)  # Simulate for testing
+                else:
+                    logging.warning("Hardware not ready, simulating voltage for plant_0")
+                    raw_value = 0
+                    voltage = random.uniform(0.0, 3.3)
+                status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, 0)
+                self.root.after(0, self.update_gui, 0, raw_value, voltage,
+                               status_text, status_color, progress_value, show_alert)
+                if show_alert and do_daily_check:
+                    self.dry_listbox.insert(tk.END, self.config['plant_0']['name'])
+
+                # Update plants 2-40 (indices 1-39) only for daily check
+                if do_daily_check:
+                    for i in range(1, self.num_plants):
                         if i < len(self.channels):
                             try:
                                 raw_value = self.channels[i].value
@@ -350,17 +395,7 @@ class PlantMoistureApp:
                                        status_text, status_color, progress_value, show_alert)
                         if show_alert:
                             self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
-                else:
-                    logging.warning("Hardware not ready, simulating voltages")
-                    self.dry_listbox.delete(0, tk.END)
-                    for i in range(self.num_plants):
-                        raw_value = 0
-                        voltage = random.uniform(0.0, 3.3)  # Simulate for testing
-                        status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
-                        self.root.after(0, self.update_gui, i, raw_value, voltage,
-                                       status_text, status_color, progress_value, show_alert)
-                        if show_alert:
-                            self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
+
                 time.sleep(self.config['plant_0']['update_interval'])
             except Exception as e:
                 logging.error(f"Monitoring error: {e}")
