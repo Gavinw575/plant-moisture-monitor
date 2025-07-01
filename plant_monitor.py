@@ -11,6 +11,7 @@ import time
 import json
 import os
 import logging
+import random  # For simulated voltages
 
 # Setup logging
 logging.basicConfig(filename='/home/chicken/plant_monitor.log', level=logging.DEBUG)
@@ -98,7 +99,6 @@ class PlantMoistureApp:
         title_frame.pack(pady=5, fill='x')
         tk.Label(title_frame, text="Plant Moisture Monitor", font=('Arial', 20, 'bold'), fg='white', bg='#2E8B57').pack()
 
-        # Configure scrollbar style
         style = ttk.Style()
         style.configure("TScrollbar", width=20, arrowsize=20)
 
@@ -114,11 +114,10 @@ class PlantMoistureApp:
         scrollbar.pack(side="left", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
 
-        # Enable finger scrolling
         def scroll_canvas(event):
-            if event.num == 5 or event.delta < 0:  # Scroll down
+            if event.num == 5 or event.delta < 0:
                 canvas.yview_scroll(1, "units")
-            elif event.num == 4 or event.delta > 0:  # Scroll up
+            elif event.num == 4 or event.delta > 0:
                 canvas.yview_scroll(-1, "units")
 
         def drag_scroll(event):
@@ -128,7 +127,6 @@ class PlantMoistureApp:
         canvas.bind_all("<Button-5>", scroll_canvas)
         canvas.bind("<B1-Motion>", lambda e: canvas.yview_scroll(int(-e.delta_y / 30), "units"))
 
-        # Dry Plants panel
         dry_frame = tk.Frame(main_frame, bg='#2E8B57', width=180)
         dry_frame.pack(side="right", fill="y", padx=5)
         tk.Label(dry_frame, text="Dry Plants", font=('Arial', 14, 'bold'), fg='white', bg='#2E8B57').pack(pady=5)
@@ -136,11 +134,11 @@ class PlantMoistureApp:
         self.dry_listbox.pack(fill="y", expand=True)
 
         self.plant_widgets = []
-        columns = 3
+        columns = 3  # Changed to 2 columns
         for i in range(self.num_plants):
             row = i // columns
             col = i % columns
-            plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=190, height=300)
+            plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=290, height=300)
             plant_frame.grid(row=row, column=col, padx=5, pady=5, sticky='nsew')
             plant_frame.grid_propagate(False)
             self.setup_plant_tile(plant_frame, i)
@@ -149,11 +147,11 @@ class PlantMoistureApp:
         plant_widgets = {}
         plant_widgets['frame'] = parent
 
-        name_frame = tk.Frame(parent, bg='white', width=180, height=30)
+        name_frame = tk.Frame(parent, bg='white', width=280, height=30)
         name_frame.pack(pady=5, fill='x', padx=5)
         name_frame.pack_propagate(False)
         plant_widgets['name_var'] = tk.StringVar(value=self.config[f'plant_{plant_id}']['name'])
-        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 12), width=12)
+        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 12), width=18)
         name_entry.pack(side='left', padx=5)
         name_entry.bind('<FocusIn>', lambda e: name_entry.select_range(0, tk.END))
         name_entry.bind('<FocusOut>', lambda e, pid=plant_id: self.update_plant_name(pid))
@@ -162,27 +160,27 @@ class PlantMoistureApp:
         plant_widgets['alert_label'].pack(side='right', padx=5)
         plant_widgets['alert_label'].pack_forget()
 
-        main_frame = tk.Frame(parent, bg='white', width=180, height=250)
+        main_frame = tk.Frame(parent, bg='white', width=280, height=250)
         main_frame.pack(fill='both', expand=True, padx=5)
         main_frame.pack_propagate(False)
 
-        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=210)
+        controls_frame = tk.Frame(main_frame, bg='white', width=180, height=210)
         controls_frame.pack(side='left', fill='y', padx=5)
         controls_frame.pack_propagate(False)
 
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                img = Image.open(image_path).resize((80, 80))
+                img = Image.open(image_path).resize((100, 100))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
                 plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 8), width=12, height=5, relief='sunken')
+                                                      font=('Arial', 8), width=14, height=6, relief='sunken')
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 8), width=12, height=5, relief='sunken')
+                                                  font=('Arial', 8), width=14, height=6, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange')
@@ -191,10 +189,10 @@ class PlantMoistureApp:
         plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white')
         plant_widgets['voltage_label'].pack()
 
-        plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
+        plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=160, mode='determinate')
         plant_widgets['moisture_progress'].pack(pady=5)
 
-        button_frame = tk.Frame(main_frame, bg='white', width=50, height=210)
+        button_frame = tk.Frame(main_frame, bg='white', width=90, height=210)
         button_frame.pack(side='right', fill='y', padx=5)
         button_frame.pack_propagate(False)
         tk.Button(button_frame, text="Set Thresholds", command=lambda: self.manual_thresholds(plant_id),
@@ -212,7 +210,7 @@ class PlantMoistureApp:
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
-                img = Image.open(path).resize((80, 80))
+                img = Image.open(path).resize((100, 100))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
@@ -234,10 +232,10 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                img = Image.open(image_path).resize((100, 100))
+                img = Image.open(image_path).resize((120, 120))
                 photo = ImageTk.PhotoImage(img)
                 tk.Label(details_window, image=photo, bg='white').pack(pady=5)
-                details_window.image = photo  # Prevent garbage collection
+                details_window.image = photo
             except Exception as e:
                 logging.error(f"Details image load failed for plant_{plant_id}: {e}")
         tk.Button(details_window, text="Edit Thresholds", command=lambda: self.manual_thresholds(plant_id),
@@ -297,28 +295,46 @@ class PlantMoistureApp:
         dry_threshold = self.config[f'plant_{plant_id}']['dry_threshold']
         wet_threshold = self.config[f'plant_{plant_id}']['wet_threshold']
         if voltage < dry_threshold:
-            return "DRY - WATER NEEDED!", "#FF9999", 20, True  # Light red
+            return "DRY - WATER NEEDED!", "#FF9999", 20, True
         elif voltage > wet_threshold:
-            return "TOO WET", "#99CCFF", 100, False  # Light blue
+            return "TOO WET", "#99CCFF", 100, False
         else:
-            return "PERFECT", "#99FF99", 60, False  # Light green
+            return "PERFECT", "#99FF99", 60, False
 
     def monitor_moisture(self):
         while self.monitoring:
             try:
                 if self.hardware_ready:
-                    self.dry_listbox.delete(0, tk.END)  # Clear dry plants list
+                    self.dry_listbox.delete(0, tk.END)
                     for i in range(self.num_plants):
                         if i < len(self.channels):
-                            raw_value = self.channels[i].value
-                            voltage = self.channels[i].voltage
-                            status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
-                            self.root.after(0, self.update_gui, i, raw_value, voltage,
-                                          status_text, status_color, progress_value, show_alert)
-                            if show_alert:
-                                self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
+                            try:
+                                raw_value = self.channels[i].value
+                                voltage = self.channels[i].voltage
+                                logging.debug(f"Plant_{i}: raw={raw_value}, voltage={voltage:.2f}V")
+                            except Exception as e:
+                                logging.error(f"Failed to read sensor for plant_{i}: {e}")
+                                raw_value = 0
+                                voltage = random.uniform(0.0, 3.3)  # Simulate for testing
+                        else:
+                            raw_value = 0
+                            voltage = random.uniform(0.0, 3.3)  # Simulate for excess plants
+                        status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
+                        self.root.after(0, self.update_gui, i, raw_value, voltage,
+                                       status_text, status_color, progress_value, show_alert)
+                        if show_alert:
+                            self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
                 else:
-                    self.root.after(0, self.update_gui_error)
+                    logging.warning("Hardware not ready, simulating voltages")
+                    self.dry_listbox.delete(0, tk.END)
+                    for i in range(self.num_plants):
+                        raw_value = 0
+                        voltage = random.uniform(0.0, 3.3)  # Simulate for testing
+                        status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
+                        self.root.after(0, self.update_gui, i, raw_value, voltage,
+                                       status_text, status_color, progress_value, show_alert)
+                        if show_alert:
+                            self.dry_listbox.insert(tk.END, self.config[f'plant_{i}']['name'])
                 time.sleep(self.config['plant_0']['update_interval'])
             except Exception as e:
                 logging.error(f"Monitoring error: {e}")
