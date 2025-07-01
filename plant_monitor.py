@@ -60,42 +60,42 @@ class PlantMoistureApp:
             self.hardware_ready = False
             logging.error(f"Hardware setup failed: {e}")
 
-def load_config(self):
-    default_config = {
-        "last_dry_check": ""
-    }
-
-    for i in range(self.num_plants):
-        default_config[f"plant_{i}"] = {
-            "dry_threshold": 1.5,
-            "wet_threshold": 2.5,
-            "update_interval": 2,
-            "name": f"Plant {i+1}",
-            "image_path": ""
+    def load_config(self):
+        default_config = {
+            "last_dry_check": ""
         }
-        try:
-            logging.debug(f"Loading config from {self.config_file}")
-            if os.path.exists(self.config_file):
-                with open(self.config_file, 'r') as f:
-                    self.config = json.load(f)
-                logging.debug(f"Config loaded: {list(self.config.keys())}")
-                for i in range(self.num_plants):
-                    plant_key = f"plant_{i}"
-                    if plant_key not in self.config:
-                        logging.info(f"Missing config for {plant_key}, using default")
-                        self.config[plant_key] = default_config[plant_key]
-                if "last_dry_check" not in self.config:
-                    logging.info("Missing last_dry_check, using default")
-                    self.config["last_dry_check"] = default_config["last_dry_check"]
-            else:
-                logging.info("Config file not found, using default")
+    
+        for i in range(self.num_plants):
+            default_config[f"plant_{i}"] = {
+                "dry_threshold": 1.5,
+                "wet_threshold": 2.5,
+                "update_interval": 2,
+                "name": f"Plant {i+1}",
+                "image_path": ""
+            }
+            try:
+                logging.debug(f"Loading config from {self.config_file}")
+                if os.path.exists(self.config_file):
+                    with open(self.config_file, 'r') as f:
+                        self.config = json.load(f)
+                    logging.debug(f"Config loaded: {list(self.config.keys())}")
+                    for i in range(self.num_plants):
+                        plant_key = f"plant_{i}"
+                        if plant_key not in self.config:
+                            logging.info(f"Missing config for {plant_key}, using default")
+                            self.config[plant_key] = default_config[plant_key]
+                    if "last_dry_check" not in self.config:
+                        logging.info("Missing last_dry_check, using default")
+                        self.config["last_dry_check"] = default_config["last_dry_check"]
+                else:
+                    logging.info("Config file not found, using default")
+                    self.config = default_config
+                    self.save_config()
+                logging.info("Config loaded successfully")
+            except Exception as e:
+                logging.error(f"Config load failed, using default: {e}")
                 self.config = default_config
                 self.save_config()
-            logging.info("Config loaded successfully")
-        except Exception as e:
-            logging.error(f"Config load failed, using default: {e}")
-            self.config = default_config
-            self.save_config()
 
     def save_config(self):
         try:
