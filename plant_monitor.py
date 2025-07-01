@@ -13,6 +13,8 @@ import os
 import logging
 import random  # For simulated voltages
 from datetime import datetime, timedelta
+print("DEBUG: PlantMoistureApp methods:", dir(self))
+self.load_config()
 
 # Setup logging
 logging.basicConfig(filename='/home/chicken/plant_monitor.log', level=logging.DEBUG)
