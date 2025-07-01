@@ -1,4 +1,4 @@
-```python
+
 #!/usr/bin/env python3
 """
 Plant Moisture Monitor GUI Application for Raspberry Pi
@@ -281,4 +281,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
