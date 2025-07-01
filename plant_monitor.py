@@ -60,16 +60,18 @@ class PlantMoistureApp:
             self.hardware_ready = False
             logging.error(f"Hardware setup failed: {e}")
 
-    def load_config(self):
-        default_config = {
-            "last_dry_check": "",
-            f"plant_{i}": {
-                "dry_threshold": 1.5,
-                "wet_threshold": 2.5,
-                "update_interval": 2,
-                "name": f"Plant {i+1}",
-                "image_path": ""
-            } for i in range(self.num_plants)
+def load_config(self):
+    default_config = {
+        "last_dry_check": ""
+    }
+
+    for i in range(self.num_plants):
+        default_config[f"plant_{i}"] = {
+            "dry_threshold": 1.5,
+            "wet_threshold": 2.5,
+            "update_interval": 2,
+            "name": f"Plant {i+1}",
+            "image_path": ""
         }
         try:
             logging.debug(f"Loading config from {self.config_file}")
