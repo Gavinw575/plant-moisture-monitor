@@ -21,7 +21,7 @@ import os
 import logging
 
 # Setup logging
-logging.basicConfig(filename='/home/pi/plant_moisture.log', level=logging.DEBUG)
+logging.basicConfig(filename='/home/chicken/plant_moisture.log', level=logging.DEBUG)
 
 class PlantMoistureApp:
     def __init__(self, root, num_plants=40):
@@ -34,7 +34,7 @@ class PlantMoistureApp:
             self.channels_per_mcp = 8
             self.num_mcp = (self.num_plants + self.channels_per_mcp - 1) // self.channels_per_mcp
 
-            self.config_file = "/home/pi/moisture_config.json"
+            self.config_file = "/home/chicken/moisture_config.json"
             self.load_config()
             self.setup_hardware()
             self.setup_gui()
