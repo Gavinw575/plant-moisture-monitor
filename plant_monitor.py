@@ -1,5 +1,6 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
+from PIL import Image, ImageTk
 import board
 import busio
 import digitalio
@@ -148,8 +149,9 @@ class PlantMoistureApp:
         plant_widgets = {}
         plant_widgets['frame'] = parent
 
-        name_frame = tk.Frame(parent, bg='white')
+        name_frame = tk.Frame(parent, bg='white', width=180, height=30)
         name_frame.pack(pady=5, fill='x', padx=5)
+        name_frame.pack_propagate(False)
         plant_widgets['name_var'] = tk.StringVar(value=self.config[f'plant_{plant_id}']['name'])
         name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 12), width=12)
         name_entry.pack(side='left', padx=5)
@@ -160,14 +162,27 @@ class PlantMoistureApp:
         plant_widgets['alert_label'].pack(side='right', padx=5)
         plant_widgets['alert_label'].pack_forget()
 
-        main_frame = tk.Frame(parent, bg='white')
-        main_frame.pack(fill='both', expand=True)
+        main_frame = tk.Frame(parent, bg='white', width=180, height=250)
+        main_frame.pack(fill='both', expand=True, padx=5)
+        main_frame.pack_propagate(False)
 
-        controls_frame = tk.Frame(main_frame, bg='white')
-        controls_frame.pack(fill='x', padx=5)
+        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=210)
+        controls_frame.pack(side='left', fill='y', padx=5)
+        controls_frame.pack_propagate(False)
 
-        plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                              font=('Arial', 8), width=15, height=5, relief='sunken')
+        image_path = self.config[f'plant_{plant_id}']['image_path']
+        if image_path and os.path.exists(image_path):
+            try:
+                img = Image.open(image_path).resize((80, 80))
+                plant_widgets['image'] = ImageTk.PhotoImage(img)
+                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
+            except Exception as e:
+                logging.error(f"Image load failed for plant_{plant_id}: {e}")
+                plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
+                                                      font=('Arial', 8), width=12, height=5, relief='sunken')
+        else:
+            plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
+                                                  font=('Arial', 8), width=12, height=5, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange')
@@ -179,15 +194,30 @@ class PlantMoistureApp:
         plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
         plant_widgets['moisture_progress'].pack(pady=5)
 
-        button_frame = tk.Frame(main_frame, bg='white')
-        button_frame.pack(side='right', padx=5, pady=5)
+        button_frame = tk.Frame(main_frame, bg='white', width=50, height=210)
+        button_frame.pack(side='right', fill='y', padx=5)
+        button_frame.pack_propagate(False)
         tk.Button(button_frame, text="Set Thresholds", command=lambda: self.manual_thresholds(plant_id),
-                 bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack()
-
-        # Tap-to-zoom binding
-        parent.bind("<Button-1>", lambda e: self.show_plant_details(plant_id))
+                 bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(pady=5)
+        tk.Button(button_frame, text="Details", command=lambda: self.show_plant_details(plant_id),
+                 bg='#2196F3', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(pady=5)
+        tk.Button(button_frame, text="Add Image", command=lambda: self.select_image(plant_id),
+                 bg='#FF9800', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(pady=5)
 
         self.plant_widgets.append(plant_widgets)
+
+    def select_image(self, plant_id):
+        try:
+            path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.png *.jpeg")])
+            if path:
+                self.config[f'plant_{plant_id}']['image_path'] = path
+                self.save_config()
+                img = Image.open(path).resize((80, 80))
+                self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
+                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
+                logging.info(f"Updated image for plant_{plant_id}: {path}")
+        except Exception as e:
+            logging.error(f"Image selection failed for plant_{plant_id}: {e}")
 
     def show_plant_details(self, plant_id):
         details_window = tk.Toplevel(self.root)
@@ -201,6 +231,15 @@ class PlantMoistureApp:
         tk.Label(details_window, text=f"Voltage: {self.plant_widgets[plant_id]['voltage_label']['text']}", font=('Arial', 12), bg='white').pack()
         tk.Label(details_window, text=f"Dry Threshold: {self.config[f'plant_{plant_id}']['dry_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
         tk.Label(details_window, text=f"Wet Threshold: {self.config[f'plant_{plant_id}']['wet_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
+        image_path = self.config[f'plant_{plant_id}']['image_path']
+        if image_path and os.path.exists(image_path):
+            try:
+                img = Image.open(image_path).resize((100, 100))
+                photo = ImageTk.PhotoImage(img)
+                tk.Label(details_window, image=photo, bg='white').pack(pady=5)
+                details_window.image = photo  # Prevent garbage collection
+            except Exception as e:
+                logging.error(f"Details image load failed for plant_{plant_id}: {e}")
         tk.Button(details_window, text="Edit Thresholds", command=lambda: self.manual_thresholds(plant_id),
                  bg='#4CAF50', fg='white', font=('Arial', 12, 'bold'), width=12, height=2).pack(pady=10)
 
@@ -290,15 +329,11 @@ class PlantMoistureApp:
         try:
             widgets = self.plant_widgets[plant_id]
             widgets['frame'].config(bg=status_color)
-            widgets['name_frame'] = widgets['frame'].winfo_children()[0]
             widgets['name_frame'].config(bg=status_color)
-            widgets['main_frame'] = widgets['frame'].winfo_children()[1]
             widgets['main_frame'].config(bg=status_color)
-            widgets['controls_frame'] = widgets['main_frame'].winfo_children()[0]
             widgets['controls_frame'].config(bg=status_color)
-            widgets['button_frame'] = widgets['main_frame'].winfo_children()[1]
             widgets['button_frame'].config(bg=status_color)
-            widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V",bg=status_color)
+            widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V", bg=status_color)
             widgets['status_label'].config(text=status_text, fg='black', bg=status_color)
             widgets['moisture_progress']['value'] = progress_value
             if show_alert:
@@ -313,13 +348,9 @@ class PlantMoistureApp:
             self.dry_listbox.delete(0, tk.END)
             for widgets in self.plant_widgets:
                 widgets['frame'].config(bg='white')
-                widgets['name_frame'] = widgets['frame'].winfo_children()[0]
                 widgets['name_frame'].config(bg='white')
-                widgets['main_frame'] = widgets['frame'].winfo_children()[1]
                 widgets['main_frame'].config(bg='white')
-                widgets['controls_frame'] = widgets['main_frame'].winfo_children()[0]
                 widgets['controls_frame'].config(bg='white')
-                widgets['button_frame'] = widgets['main_frame'].winfo_children()[1]
                 widgets['button_frame'].config(bg='white')
                 widgets['voltage_label'].config(text="Voltage: ERROR", bg='white')
                 widgets['status_label'].config(text="SENSOR ERROR", fg="red", bg='white')
