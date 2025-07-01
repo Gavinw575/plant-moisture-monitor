@@ -97,15 +97,18 @@ class PlantMoistureApp:
         title_frame.pack(pady=5, fill='x')
         tk.Label(title_frame, text="Plant Moisture Monitor", font=('Arial', 20, 'bold'), fg='white', bg='#2E8B57').pack()
 
+        # Configure scrollbar style for larger width
+        style = ttk.Style()
+        style.configure("TScrollbar", width=30)
+
         canvas = tk.Canvas(self.root, bg='#2E8B57')
-        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview)
+        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview, style="TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg='#2E8B57')
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         scrollbar.pack(side="right", fill="y")
-        scrollbar.config(width=30)  # Larger scrollbar for touch
 
         # Enable finger scrolling
         def scroll_canvas(event):
