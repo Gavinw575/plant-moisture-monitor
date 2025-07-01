@@ -134,11 +134,11 @@ class PlantMoistureApp:
         self.dry_listbox.pack(fill="y", expand=True)
 
         self.plant_widgets = []
-        columns = 3  # Changed to 2 columns
+        columns = 3
         for i in range(self.num_plants):
             row = i // columns
             col = i % columns
-            plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=290, height=300)
+            plant_frame = tk.Frame(scrollable_frame, bg='white', relief='raised', bd=2, width=190, height=300)
             plant_frame.grid(row=row, column=col, padx=5, pady=5, sticky='nsew')
             plant_frame.grid_propagate(False)
             self.setup_plant_tile(plant_frame, i)
@@ -147,11 +147,12 @@ class PlantMoistureApp:
         plant_widgets = {}
         plant_widgets['frame'] = parent
 
-        name_frame = tk.Frame(parent, bg='white', width=280, height=30)
+        name_frame = tk.Frame(parent, bg='white', width=180, height=30)
         name_frame.pack(pady=5, fill='x', padx=5)
         name_frame.pack_propagate(False)
+        plant_widgets['name_frame'] = name_frame  # Store name_frame
         plant_widgets['name_var'] = tk.StringVar(value=self.config[f'plant_{plant_id}']['name'])
-        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 12), width=18)
+        name_entry = tk.Entry(name_frame, textvariable=plant_widgets['name_var'], font=('Arial', 12), width=12)
         name_entry.pack(side='left', padx=5)
         name_entry.bind('<FocusIn>', lambda e: name_entry.select_range(0, tk.END))
         name_entry.bind('<FocusOut>', lambda e, pid=plant_id: self.update_plant_name(pid))
@@ -160,27 +161,30 @@ class PlantMoistureApp:
         plant_widgets['alert_label'].pack(side='right', padx=5)
         plant_widgets['alert_label'].pack_forget()
 
-        main_frame = tk.Frame(parent, bg='white', width=280, height=250)
+        main_frame = tk.Frame(parent, bg='white', width=180, height=250)
         main_frame.pack(fill='both', expand=True, padx=5)
         main_frame.pack_propagate(False)
+        plant_widgets['main_frame'] = main_frame  # Store main_frame
 
-        controls_frame = tk.Frame(main_frame, bg='white', width=180, height=210)
+        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=210)
         controls_frame.pack(side='left', fill='y', padx=5)
         controls_frame.pack_propagate(False)
+        plant_widgets['controls_frame'] = controls_frame  # Store controls_frame
 
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
+                # To change image size, modify (100, 100) to desired size, e.g., (80, 80) or (120, 120)
                 img = Image.open(image_path).resize((100, 100))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
                 plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 8), width=14, height=6, relief='sunken')
+                                                      font=('Arial', 8), width=12, height=5, relief='sunken')
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 8), width=14, height=6, relief='sunken')
+                                                  font=('Arial', 8), width=12, height=5, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange')
@@ -189,12 +193,13 @@ class PlantMoistureApp:
         plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white')
         plant_widgets['voltage_label'].pack()
 
-        plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=160, mode='determinate')
+        plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
         plant_widgets['moisture_progress'].pack(pady=5)
 
-        button_frame = tk.Frame(main_frame, bg='white', width=90, height=210)
+        button_frame = tk.Frame(main_frame, bg='white', width=50, height=210)
         button_frame.pack(side='right', fill='y', padx=5)
         button_frame.pack_propagate(False)
+        plant_widgets['button_frame'] = button_frame  # Store button_frame
         tk.Button(button_frame, text="Set Thresholds", command=lambda: self.manual_thresholds(plant_id),
                  bg='#4CAF50', fg='white', font=('Arial', 8, 'bold'), width=12, height=2).pack(pady=5)
         tk.Button(button_frame, text="Details", command=lambda: self.show_plant_details(plant_id),
@@ -210,6 +215,7 @@ class PlantMoistureApp:
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
+                # To change image size, modify (100, 100) to desired size, e.g., (80, 80) or (120, 120)
                 img = Image.open(path).resize((100, 100))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
@@ -232,6 +238,7 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
+                # To change image size, modify (120, 120) to desired size, e.g., (100, 100) or (150, 150)
                 img = Image.open(image_path).resize((120, 120))
                 photo = ImageTk.PhotoImage(img)
                 tk.Label(details_window, image=photo, bg='white').pack(pady=5)
@@ -344,6 +351,14 @@ class PlantMoistureApp:
     def update_gui(self, plant_id, raw_value, voltage, status_text, status_color, progress_value, show_alert):
         try:
             widgets = self.plant_widgets[plant_id]
+            # Check for required widget keys
+            required_keys = ['frame', 'name_frame', 'main_frame', 'controls_frame', 'button_frame',
+                            'voltage_label', 'status_label', 'moisture_progress', 'alert_label']
+            for key in required_keys:
+                if key not in widgets:
+                    logging.error(f"Missing widget key '{key}' for plant_{plant_id}")
+                    return
+
             widgets['frame'].config(bg=status_color)
             widgets['name_frame'].config(bg=status_color)
             widgets['main_frame'].config(bg=status_color)
@@ -363,6 +378,11 @@ class PlantMoistureApp:
         try:
             self.dry_listbox.delete(0, tk.END)
             for widgets in self.plant_widgets:
+                required_keys = ['frame', 'name_frame', 'main_frame', 'controls_frame', 'button_frame',
+                                'voltage_label', 'status_label', 'moisture_progress', 'alert_label']
+                if not all(key in widgets for key in required_keys):
+                    logging.error(f"Missing widget keys in update_gui_error: {list(widgets.keys())}")
+                    continue
                 widgets['frame'].config(bg='white')
                 widgets['name_frame'].config(bg='white')
                 widgets['main_frame'].config(bg='white')
