@@ -24,12 +24,12 @@ class PlantMoistureApp:
                 raise ValueError(f"Invalid num_plants: {num_plants}")
             self.num_plants = num_plants
             self.config_file = "/home/chicken/moisture_config.json"
+            self.monitoring = True  # Set this BEFORE setup_server()
             self.load_config()
             self.hardware_ready = True
             self.channels = [None] * num_plants
             self.setup_server()
             self.setup_gui()
-            self.monitoring = True
             self.monitor_thread = threading.Thread(target=self.monitor_moisture, daemon=True)
             self.monitor_thread.start()
             self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -202,20 +202,20 @@ class PlantMoistureApp:
             try:
                 img = Image.open(image_path).resize((40, 40))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
-                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
+                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white', width=40, height=40)
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
                 plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 7), width=12, height=1, relief='sunken')
+                                                      font=('Arial', 7), width=12, height=3, relief='sunken')
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 7), width=12, height=1, relief='sunken')
+                                                  font=('Arial', 7), width=12, height=3, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
-        plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=1)
+        plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=2)
         plant_widgets['status_label'].pack(pady=5)
 
-        plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white', width=14, height=1)
+        plant_widgets['voltage_label'] = tk.Label(controls_frame, text="Voltage: --", font=('Arial', 8), bg='white', width=14, height=2)
         plant_widgets['voltage_label'].pack(pady=5)
 
         plant_widgets['moisture_progress'] = ttk.Progressbar(controls_frame, length=120, mode='determinate')
@@ -243,7 +243,7 @@ class PlantMoistureApp:
                 self.save_config()
                 img = Image.open(path).resize((40, 40))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
-                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
+                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'], width=40, height=40)
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
         except Exception as e:
             logging.error(f"Image selection failed for plant_{plant_id}: {e}")
@@ -416,15 +416,41 @@ class PlantMoistureApp:
                 if key not in widgets:
                     logging.error(f"Missing widget key '{key}' for plant_{plant_id}")
                     return
-            widgets['frame'].config(bg=status_color)
-            widgets['name_frame'].config(bg=status_color)
-            widgets['main_frame'].config(bg=status_color)
-            widgets['controls_frame'].config(bg=status_color)
-            widgets['button_row_frame'].config(bg=status_color)
-            widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V", bg=status_color)
-            widgets['status_label'].config(text=status_text, fg='black', bg=status_color)
+            
+            # Only update if the color has actually changed to prevent flickering
+            current_bg = widgets['frame'].cget('bg')
+            if current_bg != status_color:
+                widgets['frame'].config(bg=status_color)
+                widgets['name_frame'].config(bg=status_color)
+                widgets['main_frame'].config(bg=status_color)
+                widgets['controls_frame'].config(bg=status_color)
+                widgets['button_row_frame'].config(bg=status_color)
+                widgets['voltage_label'].config(bg=status_color)
+                widgets['status_label'].config(bg=status_color)
+                
+                # Update image label background if it exists
+                if 'image_label' in widgets:
+                    widgets['image_label'].config(bg=status_color)
+            
+            # Update text only if it has changed
+            current_voltage_text = widgets['voltage_label'].cget('text')
+            new_voltage_text = f"Voltage: {voltage:.2f} V"
+            if current_voltage_text != new_voltage_text:
+                widgets['voltage_label'].config(text=new_voltage_text)
+            
+            current_status_text = widgets['status_label'].cget('text')
+            if current_status_text != status_text:
+                widgets['status_label'].config(text=status_text, fg='black')
+            
+            # Update progress bar
             widgets['moisture_progress']['value'] = progress_value
-            widgets['alert_label'].config(text="!" if show_alert else "")
+            
+            # Update alert
+            current_alert = widgets['alert_label'].cget('text')
+            new_alert = "!" if show_alert else ""
+            if current_alert != new_alert:
+                widgets['alert_label'].config(text=new_alert)
+                
         except Exception as e:
             logging.error(f"GUI update failed for plant_{plant_id}: {e}")
 
