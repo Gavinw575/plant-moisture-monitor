@@ -41,6 +41,7 @@ class PlantMoistureApp:
     def setup_server(self):
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow socket reuse
             self.server_socket.bind(('0.0.0.0', 5000))
             self.server_socket.listen(1)
             self.server_thread = threading.Thread(target=self.receive_data, daemon=True)
@@ -53,6 +54,7 @@ class PlantMoistureApp:
     def receive_data(self):
         while self.monitoring:
             try:
+                self.server_socket.settimeout(1.0)  # Add timeout to prevent blocking
                 conn, addr = self.server_socket.accept()
                 data = conn.recv(2048).decode()
                 conn.close()
@@ -62,19 +64,23 @@ class PlantMoistureApp:
                         key = f"plant_{i}"
                         if key in sensor_data:
                             self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
+            except socket.timeout:
+                continue  # Normal timeout, continue loop
             except Exception as e:
-                logging.error(f"Server receive failed: {e}")
+                if self.monitoring:  # Only log if we're still monitoring
+                    logging.error(f"Server receive failed: {e}")
+                time.sleep(1)  # Brief pause before retrying
 
     def load_config(self):
         default_config = {
             "last_dry_check": "",
-            f"plant_{i}": {
+            **{f"plant_{i}": {
                 "dry_threshold": 1.5,
                 "wet_threshold": 2.5,
                 "update_interval": 2,
                 "name": f"Plant {i+1}",
                 "image_path": ""
-            } for i in range(self.num_plants)
+            } for i in range(self.num_plants)}
         }
         try:
             logging.debug(f"Loading config from {self.config_file} with num_plants={self.num_plants}")
@@ -142,12 +148,9 @@ class PlantMoistureApp:
             elif event.num == 4 or event.delta > 0:
                 canvas.yview_scroll(-1, "units")
 
-        def drag_scroll(event):
-            canvas.yview_scroll(int(-event.delta_y / 30), "units")
-
         canvas.bind_all("<Button-4>", scroll_canvas)
         canvas.bind_all("<Button-5>", scroll_canvas)
-        canvas.bind("<B1-Motion>", lambda e: canvas.yview_scroll(int(-e.delta_y / 30), "units"))
+        canvas.bind_all("<MouseWheel>", scroll_canvas)  # Added for Windows compatibility
 
         dry_frame = tk.Frame(main_frame, bg='#2E8B57', width=180)
         dry_frame.pack(side="right", fill="y", padx=5)
@@ -197,7 +200,6 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                # To change image size, modify (40, 40) to desired size, e.g., (30, 30)
                 img = Image.open(image_path).resize((40, 40))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
@@ -239,7 +241,6 @@ class PlantMoistureApp:
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
-                # To change image size, modify (40, 40) to desired size, e.g., (30, 30)
                 img = Image.open(path).resize((40, 40))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
@@ -262,7 +263,6 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                # To change image size, modify (120, 120) to desired size, e.g., (100, 100)
                 img = Image.open(image_path).resize((120, 120))
                 photo = ImageTk.PhotoImage(img)
                 tk.Label(details_window, image=photo, bg='white').pack(pady=5)
@@ -370,55 +370,42 @@ class PlantMoistureApp:
                     self.save_config()
                     logging.info(f"Daily dryness check at {current_time}")
 
-                if self.hardware_ready and self.channels[0]:
-                    raw_value = self.channels[0].value
-                    voltage = self.channels[0].voltage
-                else:
-                    raw_value = 0
-                    voltage = random.uniform(0.0, 3.3)
-                status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, 0)
-                self.root.after(0, self.update_gui, 0, raw_value, voltage, status_text, status_color, progress_value, show_alert)
-                plant_name = self.config['plant_0']['name']
-                if show_alert:
-                    if plant_name not in current_dry_plants:
-                        self.dry_listbox.insert(tk.END, plant_name)
-                        current_dry_plants.add(plant_name)
-                elif plant_name in current_dry_plants:
-                    try:
-                        self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
+                # Update all plants during monitoring
+                for i in range(self.num_plants):
+                    if self.hardware_ready and self.channels[i]:
+                        raw_value = self.channels[i].value
+                        voltage = self.channels[i].voltage
+                    else:
+                        raw_value = 0
+                        voltage = random.uniform(0.0, 3.3)
+                    
+                    status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
+                    self.root.after(0, self.update_gui, i, raw_value, voltage, status_text, status_color, progress_value, show_alert)
+                    
+                    plant_name = self.config[f'plant_{i}']['name']
+                    if show_alert:
+                        if plant_name not in current_dry_plants:
+                            self.root.after(0, lambda name=plant_name: self.dry_listbox.insert(tk.END, name))
+                            current_dry_plants.add(plant_name)
+                    elif plant_name in current_dry_plants:
+                        self.root.after(0, lambda name=plant_name: self.remove_from_dry_list(name))
                         current_dry_plants.remove(plant_name)
-                    except ValueError:
-                        pass
-                self.root.after(0, self.dry_listbox.get_tk_widget().update_idletasks)
-
-                if do_daily_check:
-                    for i in range(1, self.num_plants):
-                        if self.hardware_ready and self.channels[i]:
-                            raw_value = self.channels[i].value
-                            voltage = self.channels[i].voltage
-                        else:
-                            raw_value = 0
-                            voltage = random.uniform(0.0, 3.3)
-                        status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
-                        self.root.after(0, self.update_gui, i, raw_value, voltage, status_text, status_color, progress_value, show_alert)
-                        plant_name = self.config[f'plant_{i}']['name']
-                        if show_alert:
-                            if plant_name not in current_dry_plants:
-                                self.dry_listbox.insert(tk.END, plant_name)
-                                current_dry_plants.add(plant_name)
-                        elif plant_name in current_dry_plants:
-                            try:
-                                self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
-                                current_dry_plants.remove(plant_name)
-                            except ValueError:
-                                pass
-                        self.root.after(0, self.dry_listbox.get_tk_widget().update_idletasks)
 
                 time.sleep(self.config['plant_0']['update_interval'])
             except Exception as e:
                 logging.error(f"Monitoring error: {e}")
                 self.root.after(0, self.update_gui_error)
                 time.sleep(5)
+
+    def remove_from_dry_list(self, plant_name):
+        """Helper method to safely remove plant from dry list"""
+        try:
+            items = self.dry_listbox.get(0, tk.END)
+            if plant_name in items:
+                index = items.index(plant_name)
+                self.dry_listbox.delete(index)
+        except (ValueError, tk.TclError):
+            pass  # Plant not in list or list has changed
 
     def update_gui(self, plant_id, raw_value, voltage, status_text, status_color, progress_value, show_alert):
         try:
@@ -464,6 +451,10 @@ class PlantMoistureApp:
 
     def on_closing(self):
         self.monitoring = False
+        try:
+            self.server_socket.close()
+        except:
+            pass
         self.save_config()
         self.root.destroy()
         logging.info("Application closed")
