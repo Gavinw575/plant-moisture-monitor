@@ -1,17 +1,13 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
-import board
-import busio
-import digitalio
-import adafruit_mcp3xxx.mcp3008 as MCP
-from adafruit_mcp3xxx.analog_in import AnalogIn
 import threading
 import time
 import json
 import os
 import logging
-import random  # For simulated voltages
+import random
+import socket
 from datetime import datetime, timedelta
 
 # Setup logging
@@ -24,13 +20,14 @@ class PlantMoistureApp:
             self.root.title("Plant Moisture Monitor")
             self.root.geometry("800x480")
             self.root.configure(bg='#2E8B57')
+            if not isinstance(num_plants, int) or num_plants <= 0:
+                raise ValueError(f"Invalid num_plants: {num_plants}")
             self.num_plants = num_plants
-            self.channels_per_mcp = 8
-            self.num_mcp = (self.num_plants + self.channels_per_mcp - 1) // self.channels_per_mcp
-
             self.config_file = "/home/chicken/moisture_config.json"
             self.load_config()
-            self.setup_hardware()
+            self.hardware_ready = True
+            self.channels = [None] * num_plants
+            self.setup_server()
             self.setup_gui()
             self.monitoring = True
             self.monitor_thread = threading.Thread(target=self.monitor_moisture, daemon=True)
@@ -41,61 +38,76 @@ class PlantMoistureApp:
             logging.error(f"Initialization failed: {e}")
             raise
 
-    def setup_hardware(self):
+    def setup_server(self):
         try:
-            self.mcps = []
-            self.channels = []
-            cs_pins = [board.D5, board.D6, board.D13, board.D19, board.D26]
-            spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
-            for i in range(min(self.num_mcp, len(cs_pins))):
-                cs = digitalio.DigitalInOut(cs_pins[i])
-                mcp = MCP.MCP3008(spi, cs)
-                self.mcps.append(mcp)
-                for j in range(min(self.channels_per_mcp, self.num_plants - i * self.channels_per_mcp)):
-                    channel = AnalogIn(mcp, getattr(MCP, f'P{j}'))
-                    self.channels.append(channel)
-            self.hardware_ready = True
-            logging.info("Hardware initialized successfully")
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.bind(('0.0.0.0', 5000))
+            self.server_socket.listen(1)
+            self.server_thread = threading.Thread(target=self.receive_data, daemon=True)
+            self.server_thread.start()
+            logging.info("TCP server started on port 5000")
         except Exception as e:
+            logging.error(f"Server setup failed: {e}")
             self.hardware_ready = False
-            logging.error(f"Hardware setup failed: {e}")
+
+    def receive_data(self):
+        while self.monitoring:
+            try:
+                conn, addr = self.server_socket.accept()
+                data = conn.recv(2048).decode()
+                conn.close()
+                if data:
+                    sensor_data = json.loads(data)
+                    for i in range(self.num_plants):
+                        key = f"plant_{i}"
+                        if key in sensor_data:
+                            self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
+            except Exception as e:
+                logging.error(f"Server receive failed: {e}")
 
     def load_config(self):
         default_config = {
-            "last_dry_check": ""
-        }
-    
-        for i in range(self.num_plants):
-            default_config[f"plant_{i}"] = {
+            "last_dry_check": "",
+            f"plant_{i}": {
                 "dry_threshold": 1.5,
                 "wet_threshold": 2.5,
                 "update_interval": 2,
                 "name": f"Plant {i+1}",
                 "image_path": ""
-            }
-            try:
-                logging.debug(f"Loading config from {self.config_file}")
-                if os.path.exists(self.config_file):
-                    with open(self.config_file, 'r') as f:
-                        self.config = json.load(f)
-                    logging.debug(f"Config loaded: {list(self.config.keys())}")
-                    for i in range(self.num_plants):
-                        plant_key = f"plant_{i}"
-                        if plant_key not in self.config:
-                            logging.info(f"Missing config for {plant_key}, using default")
-                            self.config[plant_key] = default_config[plant_key]
-                    if "last_dry_check" not in self.config:
-                        logging.info("Missing last_dry_check, using default")
-                        self.config["last_dry_check"] = default_config["last_dry_check"]
-                else:
-                    logging.info("Config file not found, using default")
-                    self.config = default_config
-                    self.save_config()
-                logging.info("Config loaded successfully")
-            except Exception as e:
-                logging.error(f"Config load failed, using default: {e}")
+            } for i in range(self.num_plants)
+        }
+        try:
+            logging.debug(f"Loading config from {self.config_file} with num_plants={self.num_plants}")
+            if not os.access(self.config_file, os.R_OK):
+                logging.warning(f"Config file {self.config_file} not readable, using default")
                 self.config = default_config
                 self.save_config()
+                return
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    self.config = json.load(f)
+                logging.debug(f"Config loaded: {list(self.config.keys())}")
+                for i in range(self.num_plants):
+                    plant_key = f"plant_{i}"
+                    if plant_key not in self.config:
+                        logging.info(f"Missing config for {plant_key}, using default")
+                        self.config[plant_key] = default_config[plant_key]
+                if "last_dry_check" not in self.config:
+                    logging.info("Missing last_dry_check, using default")
+                    self.config["last_dry_check"] = default_config["last_dry_check"]
+            else:
+                logging.info("Config file not found, using default")
+                self.config = default_config
+                self.save_config()
+            logging.info("Config loaded successfully")
+        except json.JSONDecodeError as e:
+            logging.error(f"Config file corrupted: {e}")
+            self.config = default_config
+            self.save_config()
+        except Exception as e:
+            logging.error(f"Config load failed: {e}")
+            self.config = default_config
+            self.save_config()
 
     def save_config(self):
         try:
@@ -119,7 +131,6 @@ class PlantMoistureApp:
         canvas = tk.Canvas(main_frame, bg='#2E8B57', width=600)
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview, style="TScrollbar")
         scrollable_frame = tk.Frame(canvas, bg='#2E8B57')
-        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=(0, 0, 600, 300 * (self.num_plants // 3 + 1))))
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="left", fill="y")
@@ -154,6 +165,7 @@ class PlantMoistureApp:
             plant_frame.grid(row=row, column=col, padx=5, pady=5, sticky='nsew')
             plant_frame.grid_propagate(False)
             self.setup_plant_tile(plant_frame, i)
+        canvas.configure(scrollregion=(0, 0, 600, 350 * (self.num_plants // 3 + 1)))
 
     def setup_plant_tile(self, parent, plant_id):
         plant_widgets = {}
@@ -172,12 +184,12 @@ class PlantMoistureApp:
         plant_widgets['alert_label'] = tk.Label(name_frame, text="", font=('Arial', 12, 'bold'), fg='red', bg='white', width=2)
         plant_widgets['alert_label'].pack(side='right', padx=5)
 
-        main_frame = tk.Frame(parent, bg='white', width=180, height=250)
+        main_frame = tk.Frame(parent, bg='white', width=180, height=230)
         main_frame.pack(fill='both', expand=True, padx=5)
         main_frame.pack_propagate(False)
         plant_widgets['main_frame'] = main_frame
 
-        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=190)
+        controls_frame = tk.Frame(main_frame, bg='white', width=120, height=180)
         controls_frame.pack(fill='x', padx=5)
         controls_frame.pack_propagate(False)
         plant_widgets['controls_frame'] = controls_frame
@@ -185,17 +197,17 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                # To change image size, modify (60, 60) to desired size, e.g., (80, 80) or (50, 50)
-                img = Image.open(image_path).resize((60, 60))
+                # To change image size, modify (40, 40) to desired size, e.g., (30, 30)
+                img = Image.open(image_path).resize((40, 40))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
                 plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 8), width=12, height=3, relief='sunken')
+                                                      font=('Arial', 7), width=12, height=1, relief='sunken')
         else:
             plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 8), width=12, height=3, relief='sunken')
+                                                  font=('Arial', 7), width=12, height=1, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=1)
@@ -227,8 +239,8 @@ class PlantMoistureApp:
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
-                # To change image size, modify (60, 60) to desired size, e.g., (80, 80) or (50, 50)
-                img = Image.open(path).resize((60, 60))
+                # To change image size, modify (40, 40) to desired size, e.g., (30, 30)
+                img = Image.open(path).resize((40, 40))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
@@ -250,7 +262,7 @@ class PlantMoistureApp:
         image_path = self.config[f'plant_{plant_id}']['image_path']
         if image_path and os.path.exists(image_path):
             try:
-                # To change image size, modify (120, 120) to desired size, e.g., (100, 100) or (150, 150)
+                # To change image size, modify (120, 120) to desired size, e.g., (100, 100)
                 img = Image.open(image_path).resize((120, 120))
                 photo = ImageTk.PhotoImage(img)
                 tk.Label(details_window, image=photo, bg='white').pack(pady=5)
@@ -315,36 +327,29 @@ class PlantMoistureApp:
         wet_threshold = self.config[f'plant_{plant_id}']['wet_threshold']
         max_voltage = 3.3
 
-        # Calculate progress bar value (0-100) based on voltage
         if voltage < dry_threshold:
             status_text = "DRY - WATER NEEDED!"
             status_color = "#FF9999"
-            # Map 0 to dry_threshold -> 0 to 20
             progress_value = (voltage / dry_threshold) * 20 if dry_threshold > 0 else 0
             show_alert = True
         elif voltage > wet_threshold:
             status_text = "TOO WET"
             status_color = "#99CCFF"
-            # Map wet_threshold to 3.3V -> 80 to 100
             progress_value = 80 + ((voltage - wet_threshold) / (max_voltage - wet_threshold)) * 20 if max_voltage > wet_threshold else 100
             show_alert = False
         else:
             status_text = "PERFECT"
             status_color = "#99FF99"
-            # Map dry_threshold to wet_threshold -> 20 to 80
             progress_value = 20 + ((voltage - dry_threshold) / (wet_threshold - dry_threshold)) * 60 if wet_threshold > dry_threshold else 20
             show_alert = False
 
-        # Clamp progress value to 0-100
         progress_value = max(0, min(100, progress_value))
         return status_text, status_color, progress_value, show_alert
 
     def monitor_moisture(self):
-        # Track dry plants to avoid unnecessary listbox updates
         current_dry_plants = set()
         while self.monitoring:
             try:
-                # Check if it's time for daily update for plants 2-40
                 current_time = datetime.now()
                 last_dry_check = self.config.get("last_dry_check", "")
                 do_daily_check = False
@@ -365,58 +370,49 @@ class PlantMoistureApp:
                     self.save_config()
                     logging.info(f"Daily dryness check at {current_time}")
 
-                # Always update plant 1 (index 0)
-                if self.hardware_ready:
-                    try:
-                        raw_value = self.channels[0].value
-                        voltage = self.channels[0].voltage
-                        logging.debug(f"Plant_0: raw={raw_value}, voltage={voltage:.2f}V")
-                    except Exception as e:
-                        logging.error(f"Failed to read sensor for plant_0: {e}")
-                        raw_value = 0
-                        voltage = random.uniform(0.0, 3.3)  # Simulate for testing
+                if self.hardware_ready and self.channels[0]:
+                    raw_value = self.channels[0].value
+                    voltage = self.channels[0].voltage
                 else:
-                    logging.warning("Hardware not ready, simulating voltage for plant_0")
                     raw_value = 0
                     voltage = random.uniform(0.0, 3.3)
                 status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, 0)
-                self.root.after(0, self.update_gui, 0, raw_value, voltage,
-                               status_text, status_color, progress_value, show_alert)
+                self.root.after(0, self.update_gui, 0, raw_value, voltage, status_text, status_color, progress_value, show_alert)
                 plant_name = self.config['plant_0']['name']
                 if show_alert:
                     if plant_name not in current_dry_plants:
                         self.dry_listbox.insert(tk.END, plant_name)
                         current_dry_plants.add(plant_name)
                 elif plant_name in current_dry_plants:
-                    self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
-                    current_dry_plants.remove(plant_name)
+                    try:
+                        self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
+                        current_dry_plants.remove(plant_name)
+                    except ValueError:
+                        pass
+                self.root.after(0, self.dry_listbox.get_tk_widget().update_idletasks)
 
-                # Update plants 2-40 (indices 1-39) only for daily check
                 if do_daily_check:
                     for i in range(1, self.num_plants):
-                        if i < len(self.channels):
-                            try:
-                                raw_value = self.channels[i].value
-                                voltage = self.channels[i].voltage
-                                logging.debug(f"Plant_{i}: raw={raw_value}, voltage={voltage:.2f}V")
-                            except Exception as e:
-                                logging.error(f"Failed to read sensor for plant_{i}: {e}")
-                                raw_value = 0
-                                voltage = random.uniform(0.0, 3.3)  # Simulate for testing
+                        if self.hardware_ready and self.channels[i]:
+                            raw_value = self.channels[i].value
+                            voltage = self.channels[i].voltage
                         else:
                             raw_value = 0
-                            voltage = random.uniform(0.0, 3.3)  # Simulate for excess plants
+                            voltage = random.uniform(0.0, 3.3)
                         status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
-                        self.root.after(0, self.update_gui, i, raw_value, voltage,
-                                       status_text, status_color, progress_value, show_alert)
+                        self.root.after(0, self.update_gui, i, raw_value, voltage, status_text, status_color, progress_value, show_alert)
                         plant_name = self.config[f'plant_{i}']['name']
                         if show_alert:
                             if plant_name not in current_dry_plants:
                                 self.dry_listbox.insert(tk.END, plant_name)
                                 current_dry_plants.add(plant_name)
                         elif plant_name in current_dry_plants:
-                            self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
-                            current_dry_plants.remove(plant_name)
+                            try:
+                                self.dry_listbox.delete(self.dry_listbox.get(0, tk.END).index(plant_name))
+                                current_dry_plants.remove(plant_name)
+                            except ValueError:
+                                pass
+                        self.root.after(0, self.dry_listbox.get_tk_widget().update_idletasks)
 
                 time.sleep(self.config['plant_0']['update_interval'])
             except Exception as e:
@@ -433,7 +429,6 @@ class PlantMoistureApp:
                 if key not in widgets:
                     logging.error(f"Missing widget key '{key}' for plant_{plant_id}")
                     return
-
             widgets['frame'].config(bg=status_color)
             widgets['name_frame'].config(bg=status_color)
             widgets['main_frame'].config(bg=status_color)
