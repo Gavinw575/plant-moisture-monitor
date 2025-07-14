@@ -9,7 +9,6 @@ import logging
 import random
 import socket
 from datetime import datetime, timedelta
-import queue
 
 # Setup logging
 logging.basicConfig(filename='/home/chicken/plant_monitor.log', level=logging.DEBUG)
@@ -25,25 +24,14 @@ class PlantMoistureApp:
                 raise ValueError(f"Invalid num_plants: {num_plants}")
             self.num_plants = num_plants
             self.config_file = "/home/chicken/moisture_config.json"
-            self.monitoring = True
-            
-            # Add data queue for thread-safe updates
-            self.data_queue = queue.Queue()
-            self.last_sensor_data = {}
-            
+            self.monitoring = True  # Set this BEFORE setup_server()
             self.load_config()
             self.hardware_ready = True
             self.channels = [None] * num_plants
             self.setup_server()
             self.setup_gui()
-            
-            # Start monitoring thread
             self.monitor_thread = threading.Thread(target=self.monitor_moisture, daemon=True)
             self.monitor_thread.start()
-            
-            # Start GUI update processor
-            self.process_updates()
-            
             self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
             logging.info("Application initialized successfully")
         except Exception as e:
@@ -53,7 +41,7 @@ class PlantMoistureApp:
     def setup_server(self):
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow socket reuse
             self.server_socket.bind(('0.0.0.0', 5000))
             self.server_socket.listen(1)
             self.server_thread = threading.Thread(target=self.receive_data, daemon=True)
@@ -66,32 +54,22 @@ class PlantMoistureApp:
     def receive_data(self):
         while self.monitoring:
             try:
-                self.server_socket.settimeout(0.5)  # Reduced timeout for faster response
+                self.server_socket.settimeout(1.0)  # Add timeout to prevent blocking
                 conn, addr = self.server_socket.accept()
                 data = conn.recv(2048).decode()
                 conn.close()
                 if data:
                     sensor_data = json.loads(data)
-                    # Store the latest sensor data
-                    self.last_sensor_data.update(sensor_data)
-                    
-                    # Update channels immediately
                     for i in range(self.num_plants):
                         key = f"plant_{i}"
                         if key in sensor_data:
-                            self.channels[i] = type('obj', (), {
-                                'value': int(sensor_data[key] * 1023 / 3.3), 
-                                'voltage': sensor_data[key]
-                            })
-                            # Queue immediate update for this plant
-                            self.data_queue.put(('update_plant', i, sensor_data[key]))
-                            
+                            self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
             except socket.timeout:
-                continue
+                continue  # Normal timeout, continue loop
             except Exception as e:
-                if self.monitoring:
+                if self.monitoring:  # Only log if we're still monitoring
                     logging.error(f"Server receive failed: {e}")
-                time.sleep(0.1)
+                time.sleep(1)  # Brief pause before retrying
 
     def load_config(self):
         default_config = {
@@ -99,7 +77,7 @@ class PlantMoistureApp:
             **{f"plant_{i}": {
                 "dry_threshold": 1.5,
                 "wet_threshold": 2.5,
-                "update_interval": 0.5,  # Reduced from 2 to 0.5 seconds
+                "update_interval": 2,
                 "name": f"Plant {i+1}",
                 "image_path": ""
             } for i in range(self.num_plants)}
@@ -172,7 +150,7 @@ class PlantMoistureApp:
 
         canvas.bind_all("<Button-4>", scroll_canvas)
         canvas.bind_all("<Button-5>", scroll_canvas)
-        canvas.bind_all("<MouseWheel>", scroll_canvas)
+        canvas.bind_all("<MouseWheel>", scroll_canvas)  # Added for Windows compatibility
 
         dry_frame = tk.Frame(main_frame, bg='#2E8B57', width=180)
         dry_frame.pack(side="right", fill="y", padx=5)
@@ -255,11 +233,6 @@ class PlantMoistureApp:
         tk.Button(button_row_frame, text="Add Image", command=lambda: self.select_image(plant_id),
                  bg='#FF9800', fg='white', font=('Arial', 7, 'bold'), width=10, height=1).pack(side='left', padx=2)
 
-        # Add last update tracking
-        plant_widgets['last_update'] = 0
-        plant_widgets['last_status'] = None
-        plant_widgets['last_voltage'] = None
-        
         self.plant_widgets.append(plant_widgets)
 
     def select_image(self, plant_id):
@@ -374,15 +347,10 @@ class PlantMoistureApp:
         return status_text, status_color, progress_value, show_alert
 
     def monitor_moisture(self):
-        """Simplified monitoring - just manages dry plant list and periodic checks"""
         current_dry_plants = set()
-        last_full_check = time.time()
-        
         while self.monitoring:
             try:
                 current_time = datetime.now()
-                
-                # Check if we need to do daily reset
                 last_dry_check = self.config.get("last_dry_check", "")
                 do_daily_check = False
                 if not last_dry_check:
@@ -402,98 +370,32 @@ class PlantMoistureApp:
                     self.save_config()
                     logging.info(f"Daily dryness check at {current_time}")
 
-                # Only do full check every 2 seconds to reduce processing
-                if time.time() - last_full_check >= 2.0:
-                    self.data_queue.put(('full_check', None))
-                    last_full_check = time.time()
+                # Update all plants during monitoring
+                for i in range(self.num_plants):
+                    if self.hardware_ready and self.channels[i]:
+                        raw_value = self.channels[i].value
+                        voltage = self.channels[i].voltage
+                    else:
+                        raw_value = 0
+                        voltage = random.uniform(0.0, 3.3)
+                    
+                    status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, i)
+                    self.root.after(0, self.update_gui, i, raw_value, voltage, status_text, status_color, progress_value, show_alert)
+                    
+                    plant_name = self.config[f'plant_{i}']['name']
+                    if show_alert:
+                        if plant_name not in current_dry_plants:
+                            self.root.after(0, lambda name=plant_name: self.dry_listbox.insert(tk.END, name))
+                            current_dry_plants.add(plant_name)
+                    elif plant_name in current_dry_plants:
+                        self.root.after(0, lambda name=plant_name: self.remove_from_dry_list(name))
+                        current_dry_plants.remove(plant_name)
 
-                time.sleep(0.1)  # Much faster loop
-                
+                time.sleep(self.config['plant_0']['update_interval'])
             except Exception as e:
                 logging.error(f"Monitoring error: {e}")
-                time.sleep(1)
-
-    def process_updates(self):
-        """Process queued updates in main thread"""
-        try:
-            # Process up to 10 updates per cycle to prevent queue backup
-            updates_processed = 0
-            while not self.data_queue.empty() and updates_processed < 10:
-                try:
-                    update_type, plant_id, *args = self.data_queue.get_nowait()
-                    
-                    if update_type == 'update_plant' and plant_id is not None:
-                        voltage = args[0]
-                        self.update_single_plant(plant_id, voltage)
-                    elif update_type == 'full_check':
-                        self.update_dry_list()
-                        
-                    updates_processed += 1
-                except queue.Empty:
-                    break
-                    
-        except Exception as e:
-            logging.error(f"Process updates error: {e}")
-        
-        # Schedule next update check
-        self.root.after(50, self.process_updates)  # Check every 50ms
-
-    def update_single_plant(self, plant_id, voltage):
-        """Update a single plant immediately when new data arrives"""
-        try:
-            if plant_id >= len(self.plant_widgets):
-                return
-                
-            widgets = self.plant_widgets[plant_id]
-            
-            # Skip if no significant change
-            if widgets.get('last_voltage') and abs(widgets['last_voltage'] - voltage) < 0.01:
-                return
-                
-            widgets['last_voltage'] = voltage
-            widgets['last_update'] = time.time()
-            
-            raw_value = int(voltage * 1023 / 3.3)
-            status_text, status_color, progress_value, show_alert = self.get_moisture_status(voltage, plant_id)
-            
-            # Only update if status changed
-            if widgets.get('last_status') != status_text:
-                widgets['last_status'] = status_text
-                self.update_gui(plant_id, raw_value, voltage, status_text, status_color, progress_value, show_alert)
-                
-        except Exception as e:
-            logging.error(f"Single plant update failed for plant_{plant_id}: {e}")
-
-    def update_dry_list(self):
-        """Update the dry plants list"""
-        try:
-            current_dry_plants = set()
-            
-            for i in range(self.num_plants):
-                if self.hardware_ready and self.channels[i]:
-                    voltage = self.channels[i].voltage
-                else:
-                    voltage = random.uniform(0.0, 3.3)
-                    
-                _, _, _, show_alert = self.get_moisture_status(voltage, i)
-                plant_name = self.config[f'plant_{i}']['name']
-                
-                if show_alert:
-                    current_dry_plants.add(plant_name)
-            
-            # Update dry list
-            current_list = set(self.dry_listbox.get(0, tk.END))
-            
-            # Add new dry plants
-            for plant in current_dry_plants - current_list:
-                self.dry_listbox.insert(tk.END, plant)
-                
-            # Remove plants that are no longer dry
-            for plant in current_list - current_dry_plants:
-                self.remove_from_dry_list(plant)
-                
-        except Exception as e:
-            logging.error(f"Dry list update failed: {e}")
+                self.root.after(0, self.update_gui_error)
+                time.sleep(5)
 
     def remove_from_dry_list(self, plant_name):
         """Helper method to safely remove plant from dry list"""
@@ -503,7 +405,7 @@ class PlantMoistureApp:
                 index = items.index(plant_name)
                 self.dry_listbox.delete(index)
         except (ValueError, tk.TclError):
-            pass
+            pass  # Plant not in list or list has changed
 
     def update_gui(self, plant_id, raw_value, voltage, status_text, status_color, progress_value, show_alert):
         try:
@@ -515,7 +417,7 @@ class PlantMoistureApp:
                     logging.error(f"Missing widget key '{key}' for plant_{plant_id}")
                     return
             
-            # Only update if the color has actually changed
+            # Only update if the color has actually changed to prevent flickering
             current_bg = widgets['frame'].cget('bg')
             if current_bg != status_color:
                 widgets['frame'].config(bg=status_color)
@@ -526,14 +428,28 @@ class PlantMoistureApp:
                 widgets['voltage_label'].config(bg=status_color)
                 widgets['status_label'].config(bg=status_color)
                 
+                # Update image label background if it exists
                 if 'image_label' in widgets:
                     widgets['image_label'].config(bg=status_color)
             
-            # Update text
-            widgets['voltage_label'].config(text=f"Voltage: {voltage:.2f} V")
-            widgets['status_label'].config(text=status_text, fg='black')
+            # Update text only if it has changed
+            current_voltage_text = widgets['voltage_label'].cget('text')
+            new_voltage_text = f"Voltage: {voltage:.2f} V"
+            if current_voltage_text != new_voltage_text:
+                widgets['voltage_label'].config(text=new_voltage_text)
+            
+            current_status_text = widgets['status_label'].cget('text')
+            if current_status_text != status_text:
+                widgets['status_label'].config(text=status_text, fg='black')
+            
+            # Update progress bar
             widgets['moisture_progress']['value'] = progress_value
-            widgets['alert_label'].config(text="!" if show_alert else "")
+            
+            # Update alert
+            current_alert = widgets['alert_label'].cget('text')
+            new_alert = "!" if show_alert else ""
+            if current_alert != new_alert:
+                widgets['alert_label'].config(text=new_alert)
                 
         except Exception as e:
             logging.error(f"GUI update failed for plant_{plant_id}: {e}")
