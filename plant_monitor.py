@@ -57,7 +57,15 @@ class PlantMoistureApp:
             try:
                 self.server_socket.settimeout(1.0)  # Add timeout to prevent blocking
                 conn, addr = self.server_socket.accept()
-                data = conn.recv(2048).decode().strip()
+                
+                data_chunks = []
+                while True:
+                    chunk = conn.recv(2048)
+                    if not chunk:
+                        break
+                    data_chunks.append(chunk)
+                data = b''.join(data_chunks).decode().strip()
+                
                 conn.close()
                 if data:
                     try:
