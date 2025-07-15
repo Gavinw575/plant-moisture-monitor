@@ -237,18 +237,21 @@ class PlantMoistureApp:
 
         self.plant_widgets.append(plant_widgets)
 
-    def select_image(self, plant_id):
+def select_image(self, plant_id):
         try:
             path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.png *.jpeg")])
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
                 img = Image.open(path).resize((40, 40))
+                if 'image' not in self.plant_widgets[plant_id]:
+                    self.plant_widgets[plant_id]['image'] = None
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
-                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])                
+                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
         except Exception as e:
             logging.error(f"Image selection failed for plant_{plant_id}: {e}")
+
 
     def show_plant_details(self, plant_id):
         details_window = tk.Toplevel(self.root)
