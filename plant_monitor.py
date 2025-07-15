@@ -28,6 +28,7 @@ class PlantMoistureApp:
             self.load_config()
             self.hardware_ready = True
             self.channels = [None] * num_plants
+            self.plant_widgets = []  # Initialize this before setup_gui()
             self.setup_server()
             self.setup_gui()
             self.monitor_thread = threading.Thread(target=self.monitor_moisture, daemon=True)
@@ -159,7 +160,6 @@ class PlantMoistureApp:
         self.dry_listbox = tk.Listbox(dry_frame, font=('Arial', 12), width=15, height=15, bg='white')
         self.dry_listbox.pack(fill="y", expand=True)
 
-        self.plant_widgets = []
         columns = 3
         for i in range(self.num_plants):
             row = i // columns
@@ -170,7 +170,7 @@ class PlantMoistureApp:
             self.setup_plant_tile(plant_frame, i)
         canvas.configure(scrollregion=(0, 0, 600, 350 * (self.num_plants // 3 + 1)))
 
- def setup_plant_tile(self, parent, plant_id):
+    def setup_plant_tile(self, parent, plant_id):
         plant_widgets = {}
         plant_widgets['frame'] = parent
 
@@ -198,7 +198,7 @@ class PlantMoistureApp:
         plant_widgets['controls_frame'] = controls_frame
 
         image_path = self.config[f'plant_{plant_id}']['image_path']
-        plant_widgets['image'] = None  # Ensure the key always exists
+        plant_widgets['image'] = None  # Initialize the image key
 
         if image_path and os.path.exists(image_path):
             try:
@@ -237,95 +237,123 @@ class PlantMoistureApp:
 
         self.plant_widgets.append(plant_widgets)
 
-def select_image(self, plant_id):
+    def select_image(self, plant_id):
         try:
+            # Check if plant_id is valid
+            if plant_id >= len(self.plant_widgets):
+                logging.error(f"Invalid plant_id: {plant_id}, max: {len(self.plant_widgets)-1}")
+                return
+                
             path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.png *.jpeg")])
             if path:
                 self.config[f'plant_{plant_id}']['image_path'] = path
                 self.save_config()
                 img = Image.open(path).resize((40, 40))
-                if 'image' not in self.plant_widgets[plant_id]:
-                    self.plant_widgets[plant_id]['image'] = None
+                
+                # Update the image in the plant widgets
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
                 self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
         except Exception as e:
             logging.error(f"Image selection failed for plant_{plant_id}: {e}")
 
-
     def show_plant_details(self, plant_id):
-        details_window = tk.Toplevel(self.root)
-        details_window.title(self.config[f'plant_{plant_id}']['name'])
-        details_window.geometry("400x400")
-        details_window.configure(bg='white')
-        details_window.grab_set()
+        try:
+            # Check if plant_id is valid
+            if plant_id >= len(self.plant_widgets):
+                logging.error(f"Invalid plant_id: {plant_id}, max: {len(self.plant_widgets)-1}")
+                return
+                
+            details_window = tk.Toplevel(self.root)
+            details_window.title(self.config[f'plant_{plant_id}']['name'])
+            details_window.geometry("400x400")
+            details_window.configure(bg='white')
+            details_window.grab_set()
 
-        tk.Label(details_window, text=self.config[f'plant_{plant_id}']['name'], font=('Arial', 16, 'bold'), bg='white').pack(pady=10)
-        tk.Label(details_window, text=f"Status: {self.plant_widgets[plant_id]['status_label']['text']}", font=('Arial', 12), bg='white').pack()
-        tk.Label(details_window, text=f"Voltage: {self.plant_widgets[plant_id]['voltage_label']['text']}", font=('Arial', 12), bg='white').pack()
-        tk.Label(details_window, text=f"Dry Threshold: {self.config[f'plant_{plant_id}']['dry_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
-        tk.Label(details_window, text=f"Wet Threshold: {self.config[f'plant_{plant_id}']['wet_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
-        image_path = self.config[f'plant_{plant_id}']['image_path']
-        if image_path and os.path.exists(image_path):
-            try:
-                img = Image.open(image_path).resize((120, 120))
-                photo = ImageTk.PhotoImage(img)
-                tk.Label(details_window, image=photo, bg='white').pack(pady=5)
-                details_window.image = photo
-            except Exception as e:
-                logging.error(f"Details image load failed for plant_{plant_id}: {e}")
-        tk.Button(details_window, text="Edit Thresholds", command=lambda: self.manual_thresholds(plant_id),
-                 bg='#4CAF50', fg='white', font=('Arial', 12, 'bold'), width=12, height=2).pack(pady=10)
+            tk.Label(details_window, text=self.config[f'plant_{plant_id}']['name'], font=('Arial', 16, 'bold'), bg='white').pack(pady=10)
+            tk.Label(details_window, text=f"Status: {self.plant_widgets[plant_id]['status_label']['text']}", font=('Arial', 12), bg='white').pack()
+            tk.Label(details_window, text=f"Voltage: {self.plant_widgets[plant_id]['voltage_label']['text']}", font=('Arial', 12), bg='white').pack()
+            tk.Label(details_window, text=f"Dry Threshold: {self.config[f'plant_{plant_id}']['dry_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
+            tk.Label(details_window, text=f"Wet Threshold: {self.config[f'plant_{plant_id}']['wet_threshold']:.2f} V", font=('Arial', 12), bg='white').pack()
+            image_path = self.config[f'plant_{plant_id}']['image_path']
+            if image_path and os.path.exists(image_path):
+                try:
+                    img = Image.open(image_path).resize((120, 120))
+                    photo = ImageTk.PhotoImage(img)
+                    tk.Label(details_window, image=photo, bg='white').pack(pady=5)
+                    details_window.image = photo
+                except Exception as e:
+                    logging.error(f"Details image load failed for plant_{plant_id}: {e}")
+            tk.Button(details_window, text="Edit Thresholds", command=lambda: self.manual_thresholds(plant_id),
+                     bg='#4CAF50', fg='white', font=('Arial', 12, 'bold'), width=12, height=2).pack(pady=10)
+        except Exception as e:
+            logging.error(f"Show plant details failed for plant_{plant_id}: {e}")
 
     def update_plant_name(self, plant_id):
-        name = self.plant_widgets[plant_id]['name_var'].get().strip()
-        if name:
-            self.config[f'plant_{plant_id}']['name'] = name
-            self.save_config()
-            logging.info(f"Updated name for plant_{plant_id} to {name}")
+        try:
+            # Check if plant_id is valid
+            if plant_id >= len(self.plant_widgets):
+                logging.error(f"Invalid plant_id: {plant_id}, max: {len(self.plant_widgets)-1}")
+                return
+                
+            name = self.plant_widgets[plant_id]['name_var'].get().strip()
+            if name:
+                self.config[f'plant_{plant_id}']['name'] = name
+                self.save_config()
+                logging.info(f"Updated name for plant_{plant_id} to {name}")
+        except Exception as e:
+            logging.error(f"Update plant name failed for plant_{plant_id}: {e}")
 
     def manual_thresholds(self, plant_id):
-        manual_window = tk.Toplevel(self.root)
-        manual_window.title(f"Set Thresholds {self.config[f'plant_{plant_id}']['name']}")
-        manual_window.geometry("400x300")
-        manual_window.configure(bg='white')
-        manual_window.grab_set()
+        try:
+            # Check if plant_id is valid
+            if plant_id >= len(self.plant_widgets):
+                logging.error(f"Invalid plant_id: {plant_id}, max: {len(self.plant_widgets)-1}")
+                return
+                
+            manual_window = tk.Toplevel(self.root)
+            manual_window.title(f"Set Thresholds {self.config[f'plant_{plant_id}']['name']}")
+            manual_window.geometry("400x300")
+            manual_window.configure(bg='white')
+            manual_window.grab_set()
 
-        tk.Label(manual_window, text=f"Set Thresholds for {self.config[f'plant_{plant_id}']['name']}",
-                font=('Arial', 14, 'bold'), bg='white').pack(pady=10)
+            tk.Label(manual_window, text=f"Set Thresholds for {self.config[f'plant_{plant_id}']['name']}",
+                    font=('Arial', 14, 'bold'), bg='white').pack(pady=10)
 
-        plant_widgets = self.plant_widgets[plant_id]
-        plant_widgets['dry_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['dry_threshold'])
-        plant_widgets['wet_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['wet_threshold'])
+            plant_widgets = self.plant_widgets[plant_id]
+            plant_widgets['dry_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['dry_threshold'])
+            plant_widgets['wet_threshold_var'] = tk.DoubleVar(value=self.config[f'plant_{plant_id}']['wet_threshold'])
 
-        tk.Label(manual_window, text="Dry Threshold (V):", font=('Arial', 12), bg='white').pack(pady=5)
-        dry_entry = tk.Entry(manual_window, textvariable=plant_widgets['dry_threshold_var'], font=('Arial', 12), width=10)
-        dry_entry.pack(pady=5)
-        dry_entry.bind('<FocusIn>', lambda e: dry_entry.select_range(0, tk.END))
+            tk.Label(manual_window, text="Dry Threshold (V):", font=('Arial', 12), bg='white').pack(pady=5)
+            dry_entry = tk.Entry(manual_window, textvariable=plant_widgets['dry_threshold_var'], font=('Arial', 12), width=10)
+            dry_entry.pack(pady=5)
+            dry_entry.bind('<FocusIn>', lambda e: dry_entry.select_range(0, tk.END))
 
-        tk.Label(manual_window, text="Wet Threshold (V):", font=('Arial', 12), bg='white').pack(pady=5)
-        wet_entry = tk.Entry(manual_window, textvariable=plant_widgets['wet_threshold_var'], font=('Arial', 12), width=10)
-        wet_entry.pack(pady=5)
-        wet_entry.bind('<FocusIn>', lambda e: wet_entry.select_range(0, tk.END))
+            tk.Label(manual_window, text="Wet Threshold (V):", font=('Arial', 12), bg='white').pack(pady=5)
+            wet_entry = tk.Entry(manual_window, textvariable=plant_widgets['wet_threshold_var'], font=('Arial', 12), width=10)
+            wet_entry.pack(pady=5)
+            wet_entry.bind('<FocusIn>', lambda e: wet_entry.select_range(0, tk.END))
 
-        def save_manual():
-            try:
-                dry = plant_widgets['dry_threshold_var'].get()
-                wet = plant_widgets['wet_threshold_var'].get()
-                if 0.0 <= dry <= 3.3 and 0.0 <= wet <= 3.3 and dry < wet:
-                    self.config[f'plant_{plant_id}']['dry_threshold'] = dry
-                    self.config[f'plant_{plant_id}']['wet_threshold'] = wet
-                    self.save_config()
-                    logging.info(f"Updated thresholds for plant_{plant_id}: dry={dry}, wet={wet}")
-                    manual_window.destroy()
-                else:
-                    tk.Label(manual_window, text="Invalid values (0.0-3.3, dry < wet)", fg='red', bg='white').pack()
-            except Exception as e:
-                tk.Label(manual_window, text="Enter valid numbers", fg='red', bg='white').pack()
-                logging.error(f"Threshold save failed for plant_{plant_id}: {e}")
+            def save_manual():
+                try:
+                    dry = plant_widgets['dry_threshold_var'].get()
+                    wet = plant_widgets['wet_threshold_var'].get()
+                    if 0.0 <= dry <= 3.3 and 0.0 <= wet <= 3.3 and dry < wet:
+                        self.config[f'plant_{plant_id}']['dry_threshold'] = dry
+                        self.config[f'plant_{plant_id}']['wet_threshold'] = wet
+                        self.save_config()
+                        logging.info(f"Updated thresholds for plant_{plant_id}: dry={dry}, wet={wet}")
+                        manual_window.destroy()
+                    else:
+                        tk.Label(manual_window, text="Invalid values (0.0-3.3, dry < wet)", fg='red', bg='white').pack()
+                except Exception as e:
+                    tk.Label(manual_window, text="Enter valid numbers", fg='red', bg='white').pack()
+                    logging.error(f"Threshold save failed for plant_{plant_id}: {e}")
 
-        tk.Button(manual_window, text="Save", command=save_manual,
-                 bg='green', fg='white', font=('Arial', 12, 'bold'), width=10, height=2).pack(pady=15)
+            tk.Button(manual_window, text="Save", command=save_manual,
+                     bg='green', fg='white', font=('Arial', 12, 'bold'), width=10, height=2).pack(pady=15)
+        except Exception as e:
+            logging.error(f"Manual thresholds failed for plant_{plant_id}: {e}")
 
     def get_moisture_status(self, voltage, plant_id):
         dry_threshold = self.config[f'plant_{plant_id}']['dry_threshold']
@@ -414,6 +442,11 @@ def select_image(self, plant_id):
 
     def update_gui(self, plant_id, raw_value, voltage, status_text, status_color, progress_value, show_alert):
         try:
+            # Check if plant_id is valid
+            if plant_id >= len(self.plant_widgets):
+                logging.error(f"Invalid plant_id in update_gui: {plant_id}, max: {len(self.plant_widgets)-1}")
+                return
+                
             widgets = self.plant_widgets[plant_id]
             required_keys = ['frame', 'name_frame', 'main_frame', 'controls_frame', 'button_row_frame',
                             'voltage_label', 'status_label', 'moisture_progress', 'alert_label']
