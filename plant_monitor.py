@@ -202,14 +202,14 @@ class PlantMoistureApp:
             try:
                 img = Image.open(image_path).resize((40, 40))
                 plant_widgets['image'] = ImageTk.PhotoImage(img)
-                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white', width=40, height=40)
+                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
-                plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                      font=('Arial', 7), width=12, height=3, relief='sunken')
+                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
+
         else:
-            plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
-                                                  font=('Arial', 7), width=12, height=3, relief='sunken')
+            plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
+
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=2)
@@ -243,7 +243,7 @@ class PlantMoistureApp:
                 self.save_config()
                 img = Image.open(path).resize((40, 40))
                 self.plant_widgets[plant_id]['image'] = ImageTk.PhotoImage(img)
-                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'], width=40, height=40)
+                self.plant_widgets[plant_id]['image_label'].config(image=self.plant_widgets[plant_id]['image'])                
                 logging.info(f"Updated image for plant_{plant_id}: {path}")
         except Exception as e:
             logging.error(f"Image selection failed for plant_{plant_id}: {e}")
