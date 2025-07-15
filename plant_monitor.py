@@ -170,7 +170,7 @@ class PlantMoistureApp:
             self.setup_plant_tile(plant_frame, i)
         canvas.configure(scrollregion=(0, 0, 600, 350 * (self.num_plants // 3 + 1)))
 
-    def setup_plant_tile(self, parent, plant_id):
+ def setup_plant_tile(self, parent, plant_id):
         plant_widgets = {}
         plant_widgets['frame'] = parent
 
@@ -198,6 +198,8 @@ class PlantMoistureApp:
         plant_widgets['controls_frame'] = controls_frame
 
         image_path = self.config[f'plant_{plant_id}']['image_path']
+        plant_widgets['image'] = None  # Ensure the key always exists
+
         if image_path and os.path.exists(image_path):
             try:
                 img = Image.open(image_path).resize((40, 40))
@@ -205,11 +207,11 @@ class PlantMoistureApp:
                 plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
             except Exception as e:
                 logging.error(f"Image load failed for plant_{plant_id}: {e}")
-                plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
-
+                plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
+                                                      font=('Arial', 7), width=12, height=3, relief='sunken')
         else:
-            plant_widgets['image_label'] = tk.Label(controls_frame, image=plant_widgets['image'], bg='white')
-
+            plant_widgets['image_label'] = tk.Label(controls_frame, text="[Plant Image]", bg='white',
+                                                  font=('Arial', 7), width=12, height=3, relief='sunken')
         plant_widgets['image_label'].pack(pady=5)
 
         plant_widgets['status_label'] = tk.Label(controls_frame, text="CHECKING...", font=('Arial', 10, 'bold'), bg='white', fg='orange', width=14, height=2)
