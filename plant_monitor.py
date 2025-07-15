@@ -57,14 +57,17 @@ class PlantMoistureApp:
             try:
                 self.server_socket.settimeout(1.0)  # Add timeout to prevent blocking
                 conn, addr = self.server_socket.accept()
-                data = conn.recv(2048).decode()
+                data = conn.recv(2048).decode().strip()
                 conn.close()
                 if data:
-                    sensor_data = json.loads(data)
-                    for i in range(self.num_plants):
-                        key = f"plant_{i}"
-                        if key in sensor_data:
-                            self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
+                    try:
+                        sensor_data = json.loads(data)
+                        for i in range(self.num_plants):
+                            key = f"plant_{i}"
+                            if key in sensor_data:
+                                self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
+                    except json.JSONDecodeError as e:
+                        logging.error(f"JSON decode failed: {e} | Raw data: {data}")
             except socket.timeout:
                 continue  # Normal timeout, continue loop
             except Exception as e:
