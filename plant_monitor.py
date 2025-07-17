@@ -39,89 +39,90 @@ class PlantMoistureApp:
             logging.error(f"Initialization failed: {e}")
             raise
 
-def setup_server(self):
-    try:
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(('0.0.0.0', 5000))
-        self.server_socket.listen(5)  # Increased backlog for multiple clients
-        self.clients = []  # List to store connected clients
-        self.server_thread = threading.Thread(target=self.receive_data, daemon=True)
-        self.server_thread.start()
-        logging.info("TCP server started on port 5000")
-    except Exception as e:
-        logging.error(f"Server setup failed: {e}")
-        self.hardware_ready = False
-
-def receive_data(self):
-    while self.monitoring:
+    def setup_server(self):
         try:
-            self.server_socket.settimeout(1.0)
-            # Accept new connections
-            conn, addr = self.server_socket.accept()
-            logging.info(f"New connection from {addr}")
-            self.clients.append(conn)  # Add new client to the list
-            
-            # Start a new thread to handle this client
-            client_thread = threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True)
-            client_thread.start()
-        except socket.timeout:
-            continue
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind(('0.0.0.0', 5000))
+            self.server_socket.listen(5)  # Increased backlog for multiple clients
+            self.clients = []  # List to store connected clients
+            self.server_thread = threading.Thread(target=self.receive_data, daemon=True)
+            self.server_thread.start()
+            logging.info("TCP server started on port 5000")
         except Exception as e:
-            if self.monitoring:
-                logging.error(f"Server accept failed: {e}")
-            time.sleep(1)
+            logging.error(f"Server setup failed: {e}")
+            self.hardware_ready = False
 
-def handle_client(self, conn, addr):
-    try:
+    def receive_data(self):
         while self.monitoring:
-            data_chunks = []
-            conn.settimeout(1.0)
             try:
-                while True:
-                    chunk = conn.recv(2048)
-                    if not chunk:
-                        break
-                    data_chunks.append(chunk)
-                data = b''.join(data_chunks).decode().strip()
-                
-                if data:
-                    try:
-                        sensor_data = json.loads(data)
-                        # Update local channels for GUI
-                        for i in range(self.num_plants):
-                            key = f"plant_{i}"
-                            if key in sensor_data:
-                                self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
-                        # Broadcast data to all connected clients
-                        self.broadcast_data(sensor_data)
-                    except json.JSONDecodeError as e:
-                        logging.error(f"JSON decode failed from {addr}: {e} | Raw data: {data}")
-            except socket.timeout:
-                continue  # Keep connection alive for future data
-            except Exception as e:
-                logging.error(f"Client {addr} error: {e}")
-                break
-    finally:
-        self.clients.remove(conn)
-        conn.close()
-        logging.info(f"Connection closed for {addr}")
+                self.server_socket.settimeout(1.0)
+                # Accept new connections
+                conn, addr = self.server_socket.accept()
+                logging.info(f"New connection from {addr}")
+                self.clients.append(conn)  # Add new client to the list
 
-def broadcast_data(self, sensor_data):
-    # Convert sensor data to JSON string
-    json_data = json.dumps(sensor_data) + "\n"
-    # Send to all connected clients
-    for client in self.clients[:]:  # Copy list to avoid modification issues
+                # Start a new thread to handle this client
+                client_thread = threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True)
+                client_thread.start()
+            except socket.timeout:
+                continue
+            except Exception as e:
+                if self.monitoring:
+                    logging.error(f"Server accept failed: {e}")
+                time.sleep(1)
+
+    def handle_client(self, conn, addr):
         try:
-            client.send(json_data.encode())
-            logging.info(f"Sent data to client: {json_data.strip()}")
-        except Exception as e:
-            logging.error(f"Failed to send data to client: {e}")
+            while self.monitoring:
+                data_chunks = []
+                conn.settimeout(1.0)
+                try:
+                    while True:
+                        chunk = conn.recv(2048)
+                        if not chunk:
+                            break
+                        data_chunks.append(chunk)
+                    data = b''.join(data_chunks).decode().strip()
+
+                    if data:
+                        try:
+                            sensor_data = json.loads(data)
+                            # Update local channels for GUI
+                            for i in range(self.num_plants):
+                                key = f"plant_{i}"
+                                if key in sensor_data:
+                                    self.channels[i] = type('obj', (), {'value': int(sensor_data[key] * 1023 / 3.3), 'voltage': sensor_data[key]})
+                            # Broadcast data to all connected clients
+                            self.broadcast_data(sensor_data)
+                        except json.JSONDecodeError as e:
+                            logging.error(f"JSON decode failed from {addr}: {e} | Raw data: {data}")
+                except socket.timeout:
+                    continue  # Keep connection alive for future data
+                except Exception as e:
+                    logging.error(f"Client {addr} error: {e}")
+                    break
+        finally:
+            self.clients.remove(conn)
+            conn.close()
+            logging.info(f"Connection closed for {addr}")
+
+    def broadcast_data(self, sensor_data):
+        # Convert sensor data to JSON string
+        json_data = json.dumps(sensor_data) + "\n"
+        # Send to all connected clients
+        for client in self.clients[:]:  # Copy list to avoid modification issues
             try:
-                self.clients.remove(client)
-                client.close()
-            except:
-                pass
+                client.send(json_data.encode())
+                logging.info(f"Sent data to client: {json_data.strip()}")
+            except Exception as e:
+                logging.error(f"Failed to send data to client: {e}")
+                try:
+                    self.clients.remove(client)
+                    client.close()
+                except:
+                    pass
+
     def load_config(self):
         default_config = {
             "last_dry_check": "",
